@@ -1,0 +1,26 @@
+<RCC>
+    <qresource>
+        <file>./images/colorByZ.jpeg</file>
+        <file>./images/colorByIntensity.jpeg</file>
+        <file>./images/colorByTexture.jpeg</file>
+        <file>./images/curve.png</file>
+        <file>./images/delete.png</file>
+        <file>./images/drawRoadLines.jpeg</file>
+        <file>./images/drawTrafficLights.jpeg</file>
+        <file>./images/drivingArrow.jpeg</file>
+        <file>./images/file_new.png</file>
+        <file>./images/file_open.png</file>
+        <file>./images/file_save.png</file>
+        <file>./images/modifyDrivingArrow.jpeg</file>
+        <file>./images/modifyRoadLines.png</file>
+        <file>./images/modifyTraceLine.jpeg</file>
+        <file>./images/pavement.png</file>
+        <file>./images/roadedge.png</file>
+        <file>./images/search.png</file>
+        <file>./images/stopline.png</file>
+        <file>./images/traceLine.png</file>
+        <file>./images/uncertain.png</file>
+        <file>./images/measurePoints.png</file>
+        <file>./images/Cut.png</file>
+    </qresource>
+</RCC>
