@@ -211,13 +211,14 @@ class OSGWidget : public QWidget, public osgViewer::CompositeViewer {
   template<class T>
   void drawVectorItems(const std::vector<T> &objects);
 
- Q_SIGNALS:
+Q_SIGNALS:
+
   void showProgressBarSignal(const QString &progressDialogLabelText);
   void closeProgressBarSignal();
 
   void readPCDataFromFilesSignal();
 
-  void clearIrrelevantPointsSignal(osg::Switch *rootnode, osgViewer::View *mainview, bool isActive);
+  void clearIrrelevantPointsSignal (osg::ref_ptr<osg::Switch> rootnode,osg::ref_ptr<osgViewer::View> mainview, bool isactive);
 
  private Q_SLOTS:
 

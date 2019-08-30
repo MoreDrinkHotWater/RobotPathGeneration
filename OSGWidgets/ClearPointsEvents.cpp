@@ -21,7 +21,39 @@
 #include <QtCore/QMap>
 #include <opencv2/opencv.hpp>
 
-ClearPointsEvents::ClearPointsEvents(osg::Switch *rootNode, QObject *parent):
+int returnStack(std::stack<osg::ref_ptr<osg::Switch>> &Stack)
+{
+    while(Stack.size() != 0)
+    {
+        std::cout<<"Stack size: "<<Stack.size()<<std::endl;
+
+        VertexVisitor ve;
+
+        Stack.top()->accept(ve);
+
+        int size_ve = ve.extracted_verts->size();
+
+        auto iter_ve = ve.extracted_verts->begin();
+
+        QMap<int, osg::Vec3> ve_map;
+
+        for (int i = 0; i < size_ve; ++i) {
+
+            osg::Vec3 temp_point = osg::Vec3(iter_ve->x(),iter_ve->y(),iter_ve->z());
+
+            ve_map.insert(i,temp_point);
+
+            ++iter_ve;
+        }
+
+        std::cout<<"Stack size: "<<ve_map.size()<<std::endl;
+
+        Stack.pop();
+    }
+
+}
+
+ClearPointsEvents::ClearPointsEvents(osg::ref_ptr<osg::Switch> &rootNode, QObject *parent):
         QObject(parent),
         rootNode(rootNode),
         pointCloudNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, pointCloudNodeName))),
@@ -29,8 +61,9 @@ ClearPointsEvents::ClearPointsEvents(osg::Switch *rootNode, QObject *parent):
         groundNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, groundNodeName))),
         buildingNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, buildingNodeName))),
         otherNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, otherNodeName))),
-        virtualPlaneNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode,
-                                                                                      virtualPlaneNodeName))),
+        virtualPlaneNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode,virtualPlaneNodeName))),
+        // roolbackNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode,roolbackNodeName))),
+
         tempIrrelevantGeode(nullptr),
         otherPointsGeode(nullptr),
 
@@ -49,6 +82,8 @@ ClearPointsEvents::ClearPointsEvents(osg::Switch *rootNode, QObject *parent):
 
 ClearPointsEvents::~ClearPointsEvents()
 {
+    std::cout<<"~ClearPointsEvents"<<std::endl;
+
     clean();
 }
 
@@ -62,6 +97,14 @@ bool ClearPointsEvents::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActio
 
         case(osgGA::GUIEventAdapter::KEYDOWN):
         {
+
+            if (ea.getKey() == osgGA::GUIEventAdapter::KEY_R)
+            {
+                std::cout<<"user click key: R "<<std::endl;
+
+                roolback();
+            }
+
             if (ea.getKey() == osgGA::GUIEventAdapter::KEY_Q)
             {
                 if(vpW < 50)
@@ -78,7 +121,7 @@ bool ClearPointsEvents::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActio
                 }
             }
 
-            // ctrl + R 生成 map.png
+            // ctrl 生成 map.png
             if(ea.getKey() == osgGA::GUIEventAdapter::KEY_Control_L)
             {
                 std::cout<<"user click KEY_Control_L"<<std::endl;
@@ -90,7 +133,6 @@ bool ClearPointsEvents::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActio
 
                 std::vector<osg::Vec3>::iterator Iter_ground;
                 std::vector<osg::Vec3>::iterator Iter_buliding;
-
 
                 VertexVisitor Vtea_ground;
                 VertexVisitor Vtea_buliding;
@@ -190,8 +232,6 @@ bool ClearPointsEvents::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActio
                             img.at<uchar>(i, j) = 127;
                         }
                     }
-
-
 
                 // 非地面设置成黑色
                 Iter_bulidingMap = BulidingNode_map.begin();
@@ -294,7 +334,61 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
 
         std::cout<<"user click Right Mouse"<<std::endl;
 
-        // 遍历 tempNode 结点 读取点数据
+        if(tempNode->getNumChildren() == 1)
+        {
+            tempNode->setNodeMask(1);
+        }
+
+        geode->addDrawable(test_geom.get());
+
+        std::cout<<"---------------test_geom--------------: "<<test_geom->getNumPrimitiveSets()<<std::endl;
+
+        // node 结点下始终只挂一个孩子
+        if(node->getNumChildren() != 0)
+        {
+            std::cout<<"------------------------node->removeChild-------------------"<<std::endl;
+            node->removeChild(0,node->getNumChildren());
+        }
+
+        node->addChild(geode);
+
+        if(node->getNumChildren() == 1)
+        {
+            // node 结点进栈
+            savetempNodeStack.push(node);
+        }
+
+        // 测试 stack 的元素
+
+        std::stack<osg::ref_ptr<osg::Switch>> tempSatck = savetempNodeStack;
+
+        returnStack(tempSatck);
+
+        // 查看 进栈后的 栈顶元素是否正确： 查看结点下的点个数 是否和 用户要删除的数据一致
+        VertexVisitor ve;
+
+        savetempNodeStack.top()->accept(ve);
+
+        int size_ve = ve.extracted_verts->size();
+
+        auto iter_ve = ve.extracted_verts->begin();
+
+        QMap<int, osg::Vec3> ve_map;
+
+        for (int i = 0; i < size_ve; ++i) {
+
+            osg::Vec3 temp_point = osg::Vec3(iter_ve->x(),iter_ve->y(),iter_ve->z());
+
+            ve_map.insert(i,temp_point);
+
+            ++iter_ve;
+        }
+
+        // 打印栈顶元素的点数据个数
+        std::cout<<"ve_map size: "<<ve_map.size()<<std::endl;
+
+        // 查看栈顶结点： 孩子个数是否唯一
+        std::cout<<"savetempNodeStack.top()->getNumChildren(): "<<savetempNodeStack.top()->getNumChildren()<<std::endl;
 
         // 定义两个 Map 数据结构
         QMap<int, osg::Vec3> tempNode_map;
@@ -302,11 +396,6 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
 
         VertexVisitor vtea_temp;
         VertexVisitor vtea_ground;
-
-        if(tempNode->getNumChildren() == 1)
-        {
-            tempNode->setNodeMask(1);
-        }
 
         tempNode->accept(vtea_temp);
 
@@ -358,7 +447,7 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
         // 采用数组的遍历方法
 //        for(int i = 0; i<size_tempNode; i++)
 //        {
-//            iter_ground = vtea_ground.extracted_verts->begin();
+//            iter_ground = vtea_ground.extracted_verts->begin();rr
 //
 //            for(int j = 0; j<size_groundNode; j++)
 //            {
@@ -395,9 +484,10 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
                     std::cout << "-----------------------iter_groundMap: end-----------------------" << std::endl;
                 }
 
-                if(iter_tempMap.value().x() == iter_groundMap.value().x() &&
-                   iter_tempMap.value().y() == iter_groundMap.value().y() &&
-                   iter_tempMap.value().z() == iter_groundMap.value().z())
+//                if(iter_tempMap.value().x() == iter_groundMap.value().x() &&
+//                   iter_tempMap.value().y() == iter_groundMap.value().y() &&
+//                   iter_tempMap.value().z() == iter_groundMap.value().z())
+                if(iter_tempMap.value() == iter_groundMap.value())
                 {
                     int key = iter_groundMap.key();
 
@@ -502,6 +592,7 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
             for (const auto &intersection : intersections) {
                 auto childNode = intersection.nodePath.back();
 
+                // 其他结点没挂东西
                 if (otherNode->getNumChildren() == 0 && childNode->getName() == "GroundPoints") {
                     localPoint = intersection.localIntersectionPoint;
                     if (!selectedPoints.empty()) {
@@ -514,7 +605,8 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
                     break;
                 }
 
-                if(otherNode->getNumChildren() != 0 && childNode->getName() == "OtherPOints")
+                // 其他结点 挂了结点
+                if(otherNode->getNumChildren() != 0 && childNode->getName() == "OtherPoints")
                 {
                     localPoint = intersection.localIntersectionPoint;
                     if (!selectedPoints.empty()) {
@@ -526,6 +618,20 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
                     hasAlready = false;
                     break;
                 }
+
+//                // 多次编辑
+//                if(childNode->getName() == "OtherPoints")
+//                {
+//                    localPoint = intersection.localIntersectionPoint;
+//                    if (!selectedPoints.empty()) {
+//                        if (std::get<1>(selectedPoints.back()) == localPoint) {
+//                            return;
+//                        }
+//                    }
+//                    // 继续创建下一个虚拟平面
+//                    hasAlready = false;
+//                    break;
+//                }
             }
         }
 
@@ -562,6 +668,11 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
                     {
                         points.push_back(intersection.localIntersectionPoint);
                     }
+
+//                    if(childNode->getName() == "OtherPoints")
+//                    {
+//                        points.push_back(intersection.localIntersectionPoint);
+//                    }
                 }
                 // 一个点不好画平面
                 if (points.size() < 2) {
@@ -579,7 +690,20 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
 
                 // 叶子结点存储虚拟平面的点数据
                 tempIrrelevantGeode = new osg::Geode;
-                osg::ref_ptr<osg::Geometry> test_geom = new osg::Geometry;
+                // osg::ref_ptr<osg::Geometry> test_geom = new osg::Geometry;
+
+                // 清除几何体顶点数组的缓存
+                auto* vecarray = new osg::Vec3Array;     //顶点坐标数组
+                test_geom->setVertexArray(vecarray);
+
+                test_geom = new osg::Geometry;
+
+                // std::cout<<"-----------------test_geom->getNumPrimitiveSets()----------------: "<<test_geom->getNumPrimitiveSets()<<std::endl;
+
+//                if(!test_geom->getVertexArray())
+//                {
+//                    std::cout<<"-----------------test_geom is not nullptr!------------------"<<std::endl;
+//                }
 
                 osg::ref_ptr<osg::Vec3Array> coords = new osg::Vec3Array();
                 for (const auto point : points) {
@@ -592,8 +716,9 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
 
                 tempNode->addChild(tempIrrelevantGeode);
 
-                std::cout<<"tempNode->getNumChildren(): "<<tempNode->getNumChildren()<<std::endl;
+                // std::cout<<"----------------coords->size()----------------: "<<coords->size()<<std::endl;
 
+                std::cout<<"tempNode->getNumChildren(): "<<tempNode->getNumChildren()<<std::endl;
 
                 // 原始点X-Y坐标值
                 std::vector<std::pair<double, double>> vertices;
@@ -761,15 +886,77 @@ void ClearPointsEvents::clean()
         tempNode->removeChildren(0, tempNode->getNumChildren());
     }
 
-    // tempNode->removeChildren(0, tempNode->getNumChildren());
-
     selectedPoints.clear();
 
-    if( tempIrrelevantGeode == nullptr)
+    if(tempIrrelevantGeode == nullptr)
     {
         std::cout<<"(clean)tempIrrelevantGeode is null!"<<std::endl;
 
         std::cout << "------------Debug-----------------" << std::endl;
-
     }
 }
+
+void ClearPointsEvents::roolback()
+{
+    returnStack(savetempNodeStack);
+//    std::cout<<"size: "<<savetempNodeStack.size()<<std::endl;
+//
+//    //  otherNode 的孩子 可能为： otherNodeGeode 和 node  多次回退要清除 node 结点
+//    if(otherNode->getNumChildren() == 2)
+//    {
+//        std::cout<<"-------------------remove the node---------------------"<<std::endl;
+//
+//        otherNode->removeChildren(1, otherNode->getNumChildren());
+//    }
+//
+//    if (!savetempNodeStack.empty())
+//    {
+//        if(savetempNodeStack.top()->getNumChildren() == 0)
+//        {
+//            std::cout<<"savetempNodeStack.top()->getNumChildren() == 0"<<std::endl;
+//        }
+//
+//        // std::cout<< typeid(savetempNodeStack.top()).name()<<std::endl;
+//
+////        node = savetempNodeStack.top();
+//
+//        VertexVisitor ve;
+//
+//        savetempNodeStack.top()->accept(ve);
+//
+//        int size_ve = ve.extracted_verts->size();
+//
+//        auto iter_ve = ve.extracted_verts->begin();
+//
+//        QMap<int, osg::Vec3> ve_map;
+//
+//        for (int i = 0; i < size_ve; ++i) {
+//
+//            osg::Vec3 temp_point = osg::Vec3(iter_ve->x(),iter_ve->y(),iter_ve->z());
+//
+//            // std::cout<<iter_ve->x()<<"  "<<iter_ve->y()<<"  "<<iter_ve->z()<<std::endl;
+//
+//            ve_map.insert(i,temp_point);
+//
+//            ++iter_ve;
+//        }
+//
+//        std::cout<<"ve_map size: "<<ve_map.size()<<std::endl;
+//
+//        otherNode->addChild(savetempNodeStack.top());
+//
+//        // std::cout<<"otherNode child number: "<<otherNode->getNumChildren()<<std::endl;
+//
+//        // 出栈错误
+//        savetempNodeStack.pop();
+//
+//        if (!savetempNodeStack.empty())
+//        {
+//            std::cout<<"savetempNodeStack is not nullptr and size: "<<savetempNodeStack.size()<<std::endl;
+//        }
+//    }
+}
+
+
+
+

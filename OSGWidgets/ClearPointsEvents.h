@@ -17,6 +17,7 @@
 #include <QThread>
 
 #include <iostream>
+#include <stack>
 
 namespace osgViewer{
     class View;
@@ -24,8 +25,7 @@ namespace osgViewer{
 class ClearPointsEvents : public osgGA::GUIEventHandler, public QObject{
 
 public:
-    explicit ClearPointsEvents(osg::Switch *rootNode, QObject *parent = nullptr);
-
+    explicit ClearPointsEvents(osg::ref_ptr<osg::Switch> &rootNode, QObject *parent = nullptr);
     ~ClearPointsEvents() override;
 
     bool handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionAdapter &aa) override;
@@ -37,8 +37,6 @@ public:
     std::vector<osg::Vec3>::iterator iter_temp;
 
     std::vector<osg::Vec3>::iterator iter_ground;
-
-    // std::vector<osg::Vec3>::iterator iter_buliding;
 
     int size_tempNode;
 
@@ -61,6 +59,10 @@ private:
     osg::ref_ptr<osg::Switch> otherNode;
     // 临时结点
     osg::ref_ptr<osg::Switch> tempNode;
+
+//    // 回退结点
+//    osg::ref_ptr<osg::Switch> roolbackNode;
+
     // 清除的叶子结点
     osg::ref_ptr<osg::Geode> tempIrrelevantGeode;
     // 清除的叶子结点之后 剩下的点数据
@@ -75,9 +77,22 @@ private:
 
     std::vector<osg::Vec3d> points;
 
+    std::stack<osg::ref_ptr<osg::Switch>> savetempNodeStack;
+
+    // std::stack<QMap<int, osg::Vec3>> MapStack;
+
+    osg::ref_ptr<osg::Switch> node = new osg::Switch;
+
+    osg::ref_ptr<osg::Geode> geode = new osg::Geode;
+
+    osg::ref_ptr<osg::Geometry> test_geom = new osg::Geometry;
+
+
 private:
 
     double calculateApproximateZ(const std::vector<osg::Vec3d> &points) const;
+
+    void roolback();
 
 //    JudgeGroundPoint *judgeGroundPoint;
 //

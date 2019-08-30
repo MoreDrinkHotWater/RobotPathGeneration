@@ -11,6 +11,7 @@
 #include <QTextStream>
 #include <QGridLayout>
 #include <QProgressDialog>
+#include <QMetaType>
 
 #include <osg/Light>
 #include <osg/Point>
@@ -36,6 +37,7 @@
 #include "ProgressBarWorker.h"
 #include "ReadPCDataFiles.h"
 #include "ClearIrrelevantPoints.h"
+#include "Exception.h"
 
 OSGWidget::OSGWidget(QWidget *parent) : QWidget(parent),
                                         mainView(nullptr),
@@ -62,6 +64,7 @@ OSGWidget::OSGWidget(QWidget *parent) : QWidget(parent),
                                         openFileInfo(),
                                         progressBarWorker(new ProgressBarWorker()),
                                         clearIrrelevantPoints(new ClearIrrelevantPoints())
+
 //                                        ,progressDialog(nullptr)
 {
     connect(updateTimer, &QTimer::timeout, this, &OSGWidget::updateFrame);
@@ -76,6 +79,7 @@ OSGWidget::OSGWidget(QWidget *parent) : QWidget(parent),
 OSGWidget::~OSGWidget() {
     readPCDataFilesThread.quit();
     readPCDataFilesThread.wait();
+
     progressBarThread.quit();
     progressBarThread.wait();
 
@@ -106,6 +110,10 @@ void OSGWidget::reset() {
     osg::ref_ptr<osg::Switch> otherNode =
             dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, otherNodeName));
     otherNode->removeChildren(0, otherNode->getNumChildren());
+
+//    osg::ref_ptr<osg::Switch> roolbackNode =
+//            dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, roolbackNodeName));
+//    roolbackNode->removeChildren(0, roolbackNode->getNumChildren());
 
 //    osg::ref_ptr<osg::Switch> dataNode =
 //            dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, dataNodeName));
@@ -458,14 +466,20 @@ void OSGWidget::activeColorByTexture(bool isActive) {
 }
 
 void OSGWidget::activeClearIrrelevantPoints(bool isActive) {
-    // if (isActive) {
+
+     if (isActive) {
 
         std::cout << "Osgwidget thread: " << QThread::currentThreadId() << std::endl;
 
         std::cout << "emit success" << std::endl;
 
+        qRegisterMetaType<osg::ref_ptr<osg::Switch>>("osg::ref_ptr<osg::Switch>");
+        qRegisterMetaType<osg::ref_ptr<osgViewer::View>>("osg::ref_ptr<osgViewer::View>");
+
         connect(this, &OSGWidget::clearIrrelevantPointsSignal, clearIrrelevantPoints,
-                &ClearIrrelevantPoints::clearIrrelevantPointsSlot);
+                &ClearIrrelevantPoints::clearIrrelevantPointsSlot, Qt::UniqueConnection);
+
+        // , Qt::UniqueConnection
 
         clearIrrelevantPoints->moveToThread(&clearPointThread);
         connect(&clearPointThread, &QThread::finished, clearIrrelevantPoints, &QObject::deleteLater);
@@ -473,9 +487,10 @@ void OSGWidget::activeClearIrrelevantPoints(bool isActive) {
         clearPointThread.start();
 
         emit clearIrrelevantPointsSignal(rootNode, mainView, isActive);
-//    } else {
-//
-//    }
+
+    } else {
+        clearIrrelevantPoints->removeEvent();
+    }
 }
 
 void OSGWidget::transENU2LLH() const {
@@ -607,7 +622,17 @@ void OSGWidget::transAllPointsToJSON(const std::string &dirPath) const {
 }
 
 void OSGWidget::paintEvent(QPaintEvent *) {
-    frame();
+
+    // QWidget::update();
+            //可以如下使用
+            TRY
+                frame();
+            END_TRY
+            //使用这两个宏包含可能发生的错误代码 ，当然可以根据需求 使用
+            //RETURN_NULL
+            //RETURN_PARAM(0)
+            //EXIT_ZERO  这三个宏
+
 }
 
 void OSGWidget::initSceneGraph() {
@@ -701,6 +726,10 @@ void OSGWidget::initSceneGraph() {
     virtualPlaneNode->setName(virtualPlaneNodeName);
     rootNode->addChild(virtualPlaneNode.get());
 
+//    osg::ref_ptr<osg::Switch> roolbackNode = new osg::Switch;
+//    roolbackNode->setName(roolbackNodeName);
+//    rootNode->addChild(roolbackNode.get());
+
     {
         //离散对象节点光照
         osg::ref_ptr<osg::Light> pcLight = new osg::Light;
@@ -725,6 +754,12 @@ void OSGWidget::initCamera() {
     this->setKeyEventSetsDone(0);
 
     auto graphic_window = createGraphicsWindow(0, 0, 2000, 2000);
+
+//    if(graphic_window == nullptr)
+//    {
+//        std::cout<<"------------------graphic_window: nullptr--------------"<<std::endl;
+//    }
+
     auto traits = graphic_window->getTraits();
 
     mainView = new osgViewer::View;
@@ -812,8 +847,7 @@ void OSGWidget::initVectorMap() {
     // 去掉独立的点在vectorItemNode的节点
     clearIrrelevantPiont();
 }
-
-osgQt::GraphicsWindowQt *
+ osgQt::GraphicsWindowQt *
 OSGWidget::createGraphicsWindow(int x, int y, int w, int h, const std::string &name, bool windowDecoration) {
     osg::DisplaySettings *ds = osg::DisplaySettings::instance().get();
     osg::ref_ptr<osg::GraphicsContext::Traits> traits = new osg::GraphicsContext::Traits;

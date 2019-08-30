@@ -13,7 +13,7 @@ const char virtualPlaneNodeName[] = "virtualPlaneNode";
 const char measureNodeName[] = "measureNode";
 
 
-const char no_groundNodeName[] = "no_groundNode";
+// const char roolbackNodeName[] = "roolbackNode";
 
 
 const char pointCloudNodeName[] = "pointCloudNode";

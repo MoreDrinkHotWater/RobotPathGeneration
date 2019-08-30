@@ -43,8 +43,6 @@ public:
 
             extracted_verts->insert(extracted_verts->end(), verts->begin(), verts->end());
         }
-
-
     }
 };
 

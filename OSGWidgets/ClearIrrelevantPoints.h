@@ -7,6 +7,7 @@
 #include <QObject>
 #include <osg/ref_ptr>
 #include <osgViewer/View>
+#include <osg/Switch>
 #include "ClearPointsEvents.h"
 
 class ClearIrrelevantPoints : public QObject {
@@ -14,16 +15,20 @@ class ClearIrrelevantPoints : public QObject {
 public:
     explicit ClearIrrelevantPoints() = default;
 
-    ~ClearIrrelevantPoints() override = default;
+    ~ClearIrrelevantPoints() override;
+
+    void removeEvent();
 
 private:
 
     osg::ref_ptr<osgViewer::View> mainView;
     osg::ref_ptr<osg::Switch> rootNode;
 
+    osg::ref_ptr<ClearPointsEvents> clearPointsEvents;
+
 public Q_SLOTS:
 
-    void clearIrrelevantPointsSlot(osg::Switch *rootnode, osgViewer::View *mainview, bool isactive);
+    void clearIrrelevantPointsSlot(osg::ref_ptr<osg::Switch> rootnode,osg::ref_ptr<osgViewer::View> mainview, bool isactive);
 
 };
 
