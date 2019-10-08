@@ -10,6 +10,8 @@
 #include <QThread>
 
 #include <osgViewer/CompositeViewer>
+#include <osg/Switch>
+#include <osg/Geode>
 
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
@@ -118,6 +120,8 @@ class OSGWidget : public QWidget, public osgViewer::CompositeViewer {
 
   void activeClearIrrelevantPoints(bool isActive);
 
+  void activePolygonClearIrrelevantPoints(bool isActive);
+
   void transENU2LLH() const;
 
   void saveVectorMap(const std::string &dirPath) const;
@@ -220,15 +224,16 @@ Q_SIGNALS:
 
   void clearIrrelevantPointsSignal (osg::ref_ptr<osg::Switch> rootnode,osg::ref_ptr<osgViewer::View> mainview, bool isactive);
 
+  void polygonclearIrrelevantPointsSignal (osg::ref_ptr<osg::Switch> rootnode,osg::ref_ptr<osgViewer::View> mainview, bool isactive);
+
+  void doneOpenRecentSignal();
+
  private Q_SLOTS:
 
-  void updateFrame();
+    void updateFrame();
 
  private:
   osg::ref_ptr<osgViewer::View> mainView;
-  osg::ref_ptr<osg::Switch> rootNode;
-
-  // bool isactive;
 
   osg::ref_ptr<LineEditor> lineEditor;
   osg::ref_ptr<LineModification> lineModification;
@@ -257,13 +262,13 @@ Q_SIGNALS:
   // osg::ref_ptr<ClearPointsEvents> clearPointsEvents;
 
   // 保存高程数据
-  std::vector<float> dataZ;
+  std::vector<osg::Vec3f> dataZ;
 
   // 保存强度信息
   std::vector<float> dataIntensity;
 
   // 保存颜色信息
-  std::vector<osg::Vec3> dataColor;
+  std::vector<osg::Vec3f> dataColor;
 
   // 保存所有点云的点
   osg::ref_ptr<osg::Vec3Array> allPoints;
@@ -286,6 +291,37 @@ Q_SIGNALS:
   ClearIrrelevantPoints *clearIrrelevantPoints;
 
   QThread clearPointThread;
+
+public Q_SLOT:
+
+    void openRecentSlot(const QString &projectName, const QString &datafile, const QString &jsondata, const QString &csvdata, const QString &mapdata);
+
+private:
+    // 保存多文件点云数据
+    std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> mapXYZIPointClouds;
+    std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> mapXYZRGBPointClouds;
+
+
+private:
+    osg::ref_ptr<osg::Geode> addXYZIMapPointCloud(osg::Vec3 color = osg::Vec3(1.0, 1.0, 1.0));
+
+    osg::ref_ptr<osg::Geode> addXYZRGBMapPointCloud(osg::Vec3 color = osg::Vec3(1.0, 1.0, 1.0));
+
+private:
+
+    osg::ref_ptr<osg::Switch> rootNode;
+
+//    // 地面结点
+//    osg::ref_ptr<osg::Switch> groundNode;
+//    // 非地面结点
+//    osg::ref_ptr<osg::Switch> buildingNode;
+//
+//    osg::ref_ptr<osg::Switch> pointCloudNode;
+
+public:
+
+    QString filesDirectory;
+
 };
 
 

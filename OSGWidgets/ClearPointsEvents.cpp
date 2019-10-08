@@ -20,39 +20,7 @@
 #include <QObject>
 #include <QtCore/QMap>
 #include <opencv2/opencv.hpp>
-
-int returnStack(std::stack<osg::ref_ptr<osg::Switch>> &Stack)
-{
-    while(Stack.size() != 0)
-    {
-        std::cout<<"Stack size: "<<Stack.size()<<std::endl;
-
-        VertexVisitor ve;
-
-        Stack.top()->accept(ve);
-
-        int size_ve = ve.extracted_verts->size();
-
-        auto iter_ve = ve.extracted_verts->begin();
-
-        QMap<int, osg::Vec3> ve_map;
-
-        for (int i = 0; i < size_ve; ++i) {
-
-            osg::Vec3 temp_point = osg::Vec3(iter_ve->x(),iter_ve->y(),iter_ve->z());
-
-            ve_map.insert(i,temp_point);
-
-            ++iter_ve;
-        }
-
-        std::cout<<"Stack size: "<<ve_map.size()<<std::endl;
-
-        Stack.pop();
-    }
-
-}
-
+#include <QMessageBox>
 ClearPointsEvents::ClearPointsEvents(osg::ref_ptr<osg::Switch> &rootNode, QObject *parent):
         QObject(parent),
         rootNode(rootNode),
@@ -62,7 +30,7 @@ ClearPointsEvents::ClearPointsEvents(osg::ref_ptr<osg::Switch> &rootNode, QObjec
         buildingNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, buildingNodeName))),
         otherNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, otherNodeName))),
         virtualPlaneNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode,virtualPlaneNodeName))),
-        // roolbackNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode,roolbackNodeName))),
+        saveRectNode(dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, saveRectNodeName))),
 
         tempIrrelevantGeode(nullptr),
         otherPointsGeode(nullptr),
@@ -71,11 +39,15 @@ ClearPointsEvents::ClearPointsEvents(osg::ref_ptr<osg::Switch> &rootNode, QObjec
         size_groundNode(0),
         size_buildingNode(0),
 
-        // judgeGroundPoint(new JudgeGroundPoint(iter,iterat,size_tempNode,size_groundNode,vtea)),
         x(0),
         y(0),
         vpW(10),
-        vpH(10)
+        vpH(10),
+
+        minX(0),
+        maxX(0),
+        minY(0),
+        maxY(0)
 {
 
 }
@@ -126,7 +98,15 @@ bool ClearPointsEvents::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActio
             {
                 std::cout<<"user click KEY_Control_L"<<std::endl;
 
+                // 用户编辑一半了 再编辑线等其他操作后 再想回来生成 map
+                // buildingNode = dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, buildingNodeName));
+                // 这里 buildingNode 已经被隐藏了 取不到！
+
+                std::cout<<"------------------------------------error---------------------------"<<std::endl;
+
                 buildingNode->setNodeMask(1);
+
+                std::cout<<"-----------------------------the bulidingNode is open!-------------------------"<<std::endl;
 
                 QMap<int, osg::Vec3> GroundNode_map;
                 QMap<int, osg::Vec3> BulidingNode_map;
@@ -169,69 +149,52 @@ bool ClearPointsEvents::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActio
                 QMap<int, osg::Vec3>::iterator Iter_groundMap = GroundNode_map.begin();
                 QMap<int, osg::Vec3>::iterator Iter_bulidingMap = BulidingNode_map.begin();
 
-//                for(int p = 0 ; p<10; p++)
-//                {
-//                    std::cout<<Iter_groundMap.value().x()<<"  "<<Iter_groundMap.value().y()<<"  "<<Iter_groundMap.value().z()<<std::endl;
-//                    Iter_groundMap++;
-//                }
-//
-//                std::cout<<"------------------break-----------------"<<std::endl;
-//
-//                for(int p = 0 ; p<10; p++)
-//                {
-//                    std::cout<<Iter_bulidingMap.value().x()<<"  "<<Iter_bulidingMap.value().y()<<"  "<<Iter_bulidingMap.value().z()<<std::endl;
-//                    Iter_bulidingMap++;
-//                }
-//
-//                Iter_groundMap = GroundNode_map.begin();
-//                Iter_bulidingMap = BulidingNode_map.begin();
+                double min_x = FLT_MAX;
+                double max_x = FLT_MIN;
+                double min_y = FLT_MAX;
+                double max_y = FLT_MIN;
 
-                    double min_x = FLT_MAX;
-                    double max_x = FLT_MIN;
-                    double min_y = FLT_MAX;
-                    double max_y = FLT_MIN;
+                for (; Iter_bulidingMap != BulidingNode_map.end();) {
 
-                    for( ; Iter_bulidingMap != BulidingNode_map.end();) {
-
-                        if(Iter_bulidingMap == BulidingNode_map.end())
-                        {
-                            std::cout<<"--------------Iter_bulidingMap == BulidingNode_map.end()-------------"<<std::endl;
-                        }
-
-                        if (min_x > Iter_bulidingMap.value().x()) {
-                            min_x = Iter_bulidingMap.value().x();
-                        }
-                        if (max_x < Iter_bulidingMap.value().x()) {
-                            max_x = Iter_bulidingMap.value().x();
-                        }
-                        if (min_y > Iter_bulidingMap.value().y()) {
-                            min_y = Iter_bulidingMap.value().y();
-                        }
-                        if (max_y < Iter_bulidingMap.value().y()) {
-                            max_y = Iter_bulidingMap.value().y();
-                        }
-                        ++Iter_bulidingMap;
+                    if (Iter_bulidingMap == BulidingNode_map.end()) {
+                        std::cout << "--------------Iter_bulidingMap == BulidingNode_map.end()-------------"
+                                  << std::endl;
                     }
 
-                    min_x = int(min_x) - 1;
-                    min_y = int(min_y) - 1;
-
-                    float dim = 0.2;
-                    int Col = std::ceil((max_x - min_x) / dim);
-                    int Row = std::ceil((max_y - min_y) / dim);
-
-
-                    std::cout<<"Row: "<<Row<<std::endl;
-                    std::cout<<"Col: "<<Col<<std::endl;
-
-
-                    // 单通道： CV_8UC1 可以创建----8位无符号的单通道---灰度图片
-                    cv::Mat img = cv::Mat::zeros(Row, Col, CV_8UC1);
-                    for (int i = 0; i < Row; i++) {
-                        for (int j = 0; j < Col; j++) {
-                            img.at<uchar>(i, j) = 127;
-                        }
+                    if (min_x > Iter_bulidingMap.value().x()) {
+                        min_x = Iter_bulidingMap.value().x();
                     }
+                    if (max_x < Iter_bulidingMap.value().x()) {
+                        max_x = Iter_bulidingMap.value().x();
+                    }
+                    if (min_y > Iter_bulidingMap.value().y()) {
+                        min_y = Iter_bulidingMap.value().y();
+                    }
+                    if (max_y < Iter_bulidingMap.value().y()) {
+                        max_y = Iter_bulidingMap.value().y();
+                    }
+                    ++Iter_bulidingMap;
+                }
+
+                min_x = int(min_x) - 1;
+                min_y = int(min_y) - 1;
+
+                float dim = 0.2;
+                int Col = std::ceil((max_x - min_x) / dim);
+                int Row = std::ceil((max_y - min_y) / dim);
+
+
+                std::cout << "Row: " << Row << std::endl;
+                std::cout << "Col: " << Col << std::endl;
+
+
+                // 单通道： CV_8UC1 可以创建----8位无符号的单通道---灰度图片
+                cv::Mat img = cv::Mat::zeros(Row, Col, CV_8UC1);
+                for (int i = 0; i < Row; i++) {
+                    for (int j = 0; j < Col; j++) {
+                        img.at<uchar>(i, j) = 127;
+                    }
+                }
 
                 // 非地面设置成黑色
                 Iter_bulidingMap = BulidingNode_map.begin();
@@ -262,8 +225,6 @@ bool ClearPointsEvents::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActio
                     int lx = static_cast<int>((Iter_groundMap.value().x() - min_x) / dim);
                     int ly = static_cast<int>((Iter_groundMap.value().y() - min_y) / dim);
 
-                    // std::cout<<"ly: "<<ly<<"  "<<"lx: "<<lx<<std::endl;
-
                     img.at<uchar>(ly, lx) = 255;
 
                     ++Iter_groundMap;
@@ -272,6 +233,7 @@ bool ClearPointsEvents::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActio
                     cv::flip(img, img, 0);
 
 
+                    // 生成 Map 存放的路径
                     std::string map_filename = "map.png";
                     std::string map_filename2 = "map.yaml";
                     std::string map_folder = "/home/zhihui/TempPointCloud";
@@ -319,6 +281,7 @@ bool ClearPointsEvents::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActio
                 std::cout<<"the mouse: RELEASE"<<std::endl;
 
                 pick(ea, view);
+
             }
             return true;
         }
@@ -350,24 +313,24 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
             node->removeChild(0,node->getNumChildren());
         }
 
-        node->addChild(geode);
+         node->addChild(geode);
 
-        if(node->getNumChildren() == 1)
-        {
-            // node 结点进栈
-            savetempNodeStack.push(node);
-        }
+//        if(node->getNumChildren() == 1)
+//        {
+//            // node 结点进栈
+//            savetempNodeStack.push(node);
+//        }
 
         // 测试 stack 的元素
 
-        std::stack<osg::ref_ptr<osg::Switch>> tempSatck = savetempNodeStack;
-
-        returnStack(tempSatck);
+//        std::stack<osg::ref_ptr<osg::Switch>> tempSatck = savetempNodeStack;
+//
+//        returnStack(tempSatck);
 
         // 查看 进栈后的 栈顶元素是否正确： 查看结点下的点个数 是否和 用户要删除的数据一致
         VertexVisitor ve;
 
-        savetempNodeStack.top()->accept(ve);
+        node->accept(ve);
 
         int size_ve = ve.extracted_verts->size();
 
@@ -384,11 +347,21 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
             ++iter_ve;
         }
 
+        // 防止用户疯狂按右键 所以加一个判断。
+        if(tempNode->getNumChildren() == 1)
+        {
+            map.push(ve_map);
+        }
+        else
+        {
+            return;
+        }
+
         // 打印栈顶元素的点数据个数
         std::cout<<"ve_map size: "<<ve_map.size()<<std::endl;
 
         // 查看栈顶结点： 孩子个数是否唯一
-        std::cout<<"savetempNodeStack.top()->getNumChildren(): "<<savetempNodeStack.top()->getNumChildren()<<std::endl;
+        // std::cout<<"savetempNodeStack.top()->getNumChildren(): "<<savetempNodeStack.top()->getNumChildren()<<std::endl;
 
         // 定义两个 Map 数据结构
         QMap<int, osg::Vec3> tempNode_map;
@@ -416,9 +389,6 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
         iter_temp = vtea_temp.extracted_verts->begin();
         iter_ground = vtea_ground.extracted_verts->begin();
 
-        // std::ofstream fout("/home/zhihui/Desktop/vertex.pcd");
-        // std::ofstream fout_ground("/home/zhihui/Desktop/other_vertex.pcd");
-
         for (int i = 0; i < size_tempNode; ++i) {
             osg::Vec3 temp_point = osg::Vec3(iter_temp->x(),iter_temp->y(),iter_temp->z());
 
@@ -430,10 +400,15 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
         std::cout<<"tempNode_map.size(): "<<tempNode_map.size()<<std::endl;
 
         for (int j = 0; j < size_groundNode; ++j) {
+
             osg::Vec3 temp_point = osg::Vec3(iter_ground->x(),iter_ground->y(),iter_ground->z());
 
-            groundNode_map.insert(j,temp_point);
+            // groundNode  中没有在 tempNode 矩形框内的点 ： 即 otherPoints
+            if (iter_ground->x() < minX || iter_ground->x()> maxX || iter_ground->y() < minY || iter_ground->y() > maxY) {
 
+                groundNode_map.insert(j,temp_point);
+
+            }
             ++iter_ground;
         }
 
@@ -444,65 +419,7 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
         osg::ref_ptr<osg::Vec3Array> other_coords = new osg::Vec3Array();
         otherPointsGeode->setName("OtherPoints");
 
-        // 采用数组的遍历方法
-//        for(int i = 0; i<size_tempNode; i++)
-//        {
-//            iter_ground = vtea_ground.extracted_verts->begin();rr
-//
-//            for(int j = 0; j<size_groundNode; j++)
-//            {
-//                //  精度小于 1.0e-4 说明相同  iter_temp: tempNode  iter_ground: groundNode
-//                if(fabs(iter_temp->x()-iter_ground->x()) > 1.0e-3 && fabs(iter_temp->y()-iter_ground->y()) > 1.0e-4 && fabs(iter_temp->z()-iter_ground->z()) > 1.0e-4)
-//                {
-//                    other_coords->push_back(osg::Vec3(iter_ground->x(), iter_ground->y(), iter_ground->z()));
-//                }
-//                iter_ground++;
-//            }
-//
-//            iter_temp++;
-//        }
-
-        // 采用map的遍历方法
-        QMap<int, osg::Vec3>::iterator iter_tempMap = tempNode_map.begin();
         QMap<int, osg::Vec3>::iterator iter_groundMap;
-
-//        for (int k = 0; k < size_tempNode; ++k) {
-//
-//            fout<<iter_tempMap.value().x()<<"  "<<iter_tempMap.value().y()<<"  "<<iter_tempMap.value().z()<<std::endl;
-//
-//            ++iter_tempMap;
-//        }
-
-        for ( ; iter_tempMap != tempNode_map.end() ; ) {
-
-            iter_groundMap = groundNode_map.begin();
-
-            for ( ; iter_groundMap != groundNode_map.end() ; ) {
-
-                // 如果相等就移除
-                if (iter_groundMap == groundNode_map.end()) {
-                    std::cout << "-----------------------iter_groundMap: end-----------------------" << std::endl;
-                }
-
-//                if(iter_tempMap.value().x() == iter_groundMap.value().x() &&
-//                   iter_tempMap.value().y() == iter_groundMap.value().y() &&
-//                   iter_tempMap.value().z() == iter_groundMap.value().z())
-                if(iter_tempMap.value() == iter_groundMap.value())
-                {
-                    int key = iter_groundMap.key();
-
-                    // 从 Map 中删除这条记录
-                    groundNode_map.remove(key);
-
-                    break;
-                }
-                // 不然就指针后移
-                ++iter_groundMap;
-
-            }
-
-            ++iter_tempMap;
-        }
 
         for (iter_groundMap = groundNode_map.begin();  iter_groundMap != groundNode_map.end() ; ++iter_groundMap) {
 
@@ -512,7 +429,7 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
         std::cout<<"other_coords size: "<<other_coords->size()<<std::endl;
 
         // 始终让 otherNode 只有一个孩子被渲染出来
-        if(otherNode->getNumChildren() != 0)
+        if(otherNode && otherNode->getNumChildren() != 0)
         {
             otherNode->removeChild(0,otherNode->getNumChildren());
         }
@@ -524,46 +441,33 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
 
         otherNode->addChild(otherPointsGeode);
 
-//        // 移除tempNode 后 余下的结点
-//        iter_groundMap = groundNode_map.begin();
-//
-//        for ( ;iter_groundMap != groundNode_map.end();) {
-//
-//            // fout_ground<<iter_groundMap.value().x()<<"  "<<iter_groundMap.value().y()<<"  "<<iter_groundMap.value().z()<<std::endl;
-//
-//            ++iter_groundMap;
-//        }
-//
-//        // 打印 tempNode 的数据
-//        iter_tempMap = tempNode_map.begin();
-//
-//        int size = 0;
-//
-//        for (;iter_tempMap != tempNode_map.end();)
-//        {
-//            // std::cout<<iter_tempMap.value().x()<<"  "<<iter_tempMap.value().y()<<"  "<<iter_tempMap.value().z()<<std::endl;
-//
-//            ++iter_tempMap;
-//
-//            ++size;
-//        }
-//
-//        std::cout<<"size: "<<size<<std::endl;
-
         // 地面结点
-        groundNode->setNodeMask(0);
+        if(groundNode)
+        {
+            groundNode->setNodeMask(0);
+        }
         // 全部点云结点
-        pointCloudNode->setNodeMask(0);
+        if(pointCloudNode)
+        {
+            pointCloudNode->setNodeMask(0);
+        }
+
         // 保存清除点云的结点
-        tempNode->setNodeMask(0);
+        if(tempNode)
+        {
+            tempNode->setNodeMask(0);
+        }
         // 非地面结点
-        buildingNode->setNodeMask(0);
+        if(buildingNode)
+        {
+            buildingNode->setNodeMask(0);
+        }
         // 保存余下点云的结点
         otherNode->setNodeMask(1);
 
     }
 
-    if (tempNode->getNumChildren() == 1) {
+    if(tempNode && tempNode->getNumChildren() == 1) {
 
         // 防止多个刷子 清除前面一个刷子
         clean();
@@ -572,7 +476,12 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
             points.clear();
         }
     }
+    // 多次编辑时 需要把 tempNode 结点打开 不然读不到 会报错！！！！！
 
+    if(tempNode)
+    {
+        tempNode->setNodeMask(1);
+    }
 
     if (ea.getButton() == osgGA::GUIEventAdapter::LEFT_MOUSE_BUTTON) {
 
@@ -605,6 +514,18 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
                     break;
                 }
 
+                if (otherNode->getNumChildren() == 0 && childNode->getName() == "AddPoints") {
+                    localPoint = intersection.localIntersectionPoint;
+                    if (!selectedPoints.empty()) {
+                        if (std::get<1>(selectedPoints.back()) == localPoint) {
+                            return;
+                        }
+                    }
+                    // 继续创建下一个虚拟平面
+                    hasAlready = false;
+                    break;
+                }
+
                 // 其他结点 挂了结点
                 if(otherNode->getNumChildren() != 0 && childNode->getName() == "OtherPoints")
                 {
@@ -619,19 +540,18 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
                     break;
                 }
 
-//                // 多次编辑
-//                if(childNode->getName() == "OtherPoints")
-//                {
-//                    localPoint = intersection.localIntersectionPoint;
-//                    if (!selectedPoints.empty()) {
-//                        if (std::get<1>(selectedPoints.back()) == localPoint) {
-//                            return;
-//                        }
-//                    }
-//                    // 继续创建下一个虚拟平面
-//                    hasAlready = false;
-//                    break;
-//                }
+                if(otherNode->getNumChildren() != 0 && childNode->getName() == "AddPoints")
+                {
+                    localPoint = intersection.localIntersectionPoint;
+                    if (!selectedPoints.empty()) {
+                        if (std::get<1>(selectedPoints.back()) == localPoint) {
+                            return;
+                        }
+                    }
+                    // 继续创建下一个虚拟平面
+                    hasAlready = false;
+                    break;
+                }
             }
         }
 
@@ -669,10 +589,11 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
                         points.push_back(intersection.localIntersectionPoint);
                     }
 
-//                    if(childNode->getName() == "OtherPoints")
-//                    {
-//                        points.push_back(intersection.localIntersectionPoint);
-//                    }
+                    if(otherNode->getNumChildren() != 0 && childNode->getName() == "AddPoints")
+                    {
+                        points.push_back(intersection.localIntersectionPoint);
+                    }
+
                 }
                 // 一个点不好画平面
                 if (points.size() < 2) {
@@ -698,12 +619,6 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
 
                 test_geom = new osg::Geometry;
 
-                // std::cout<<"-----------------test_geom->getNumPrimitiveSets()----------------: "<<test_geom->getNumPrimitiveSets()<<std::endl;
-
-//                if(!test_geom->getVertexArray())
-//                {
-//                    std::cout<<"-----------------test_geom is not nullptr!------------------"<<std::endl;
-//                }
 
                 osg::ref_ptr<osg::Vec3Array> coords = new osg::Vec3Array();
                 for (const auto point : points) {
@@ -712,7 +627,19 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
                 test_geom->setVertexArray(coords.get());
 
                 test_geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS, 0, static_cast<GLsizei>(coords->size())));
+
                 tempIrrelevantGeode->addDrawable(test_geom.get());
+
+//                if(!tempNode) {
+//                    std::cout<< "==================================the tempNode is not exist!=================================="<< std::endl;
+//
+//                    tempNode = dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, tempNodeName));
+//                }
+//
+//                // error: inline void setNodeMask(NodeMask nm) { _nodeMask = nm; }
+//                tempNode->setNodeMask(1);
+//
+//                std::cout<<"tempNode->getNumChildren(): "<<tempNode->getNumChildren()<<std::endl;
 
                 tempNode->addChild(tempIrrelevantGeode);
 
@@ -729,8 +656,6 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
 //                        std::cout << "(" << pair.first << ", " << pair.second << ")" << std::endl;
 //                    }
 
-                double minX, maxX;
-                double minY, maxY;
                 minX = maxX = vertices[0].first;
                 minY = maxY = vertices[0].second;
 
@@ -801,7 +726,6 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
                     auto intersections = picker->getIntersections();
                     std::cout << "intersections: " << intersections.size() << std::endl;
                     for (const auto &intersection: intersections) {
-                        auto childNode = intersection.nodePath.back();
                         localPoint = intersection.localIntersectionPoint;
                         break;
                     }
@@ -811,7 +735,6 @@ void ClearPointsEvents::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *
                             return;
                         }
                     }
-
 
                 } else {
                     virtualPlaneNode->removeChildren(0, virtualPlaneNode->getNumChildren());
@@ -898,63 +821,51 @@ void ClearPointsEvents::clean()
 
 void ClearPointsEvents::roolback()
 {
-    returnStack(savetempNodeStack);
-//    std::cout<<"size: "<<savetempNodeStack.size()<<std::endl;
-//
-//    //  otherNode 的孩子 可能为： otherNodeGeode 和 node  多次回退要清除 node 结点
-//    if(otherNode->getNumChildren() == 2)
-//    {
-//        std::cout<<"-------------------remove the node---------------------"<<std::endl;
-//
-//        otherNode->removeChildren(1, otherNode->getNumChildren());
-//    }
-//
-//    if (!savetempNodeStack.empty())
-//    {
-//        if(savetempNodeStack.top()->getNumChildren() == 0)
-//        {
-//            std::cout<<"savetempNodeStack.top()->getNumChildren() == 0"<<std::endl;
-//        }
-//
-//        // std::cout<< typeid(savetempNodeStack.top()).name()<<std::endl;
-//
-////        node = savetempNodeStack.top();
-//
-//        VertexVisitor ve;
-//
-//        savetempNodeStack.top()->accept(ve);
-//
-//        int size_ve = ve.extracted_verts->size();
-//
-//        auto iter_ve = ve.extracted_verts->begin();
-//
-//        QMap<int, osg::Vec3> ve_map;
-//
-//        for (int i = 0; i < size_ve; ++i) {
-//
-//            osg::Vec3 temp_point = osg::Vec3(iter_ve->x(),iter_ve->y(),iter_ve->z());
-//
-//            // std::cout<<iter_ve->x()<<"  "<<iter_ve->y()<<"  "<<iter_ve->z()<<std::endl;
-//
-//            ve_map.insert(i,temp_point);
-//
-//            ++iter_ve;
-//        }
-//
-//        std::cout<<"ve_map size: "<<ve_map.size()<<std::endl;
-//
-//        otherNode->addChild(savetempNodeStack.top());
-//
-//        // std::cout<<"otherNode child number: "<<otherNode->getNumChildren()<<std::endl;
-//
-//        // 出栈错误
-//        savetempNodeStack.pop();
-//
-//        if (!savetempNodeStack.empty())
-//        {
-//            std::cout<<"savetempNodeStack is not nullptr and size: "<<savetempNodeStack.size()<<std::endl;
-//        }
-//    }
+    // returnStack(savetempNodeStack);
+
+    std::cout<<map.size()<<std::endl;
+
+    if(map.size() == 0)
+    {
+        std::cout<<"------------------------map.size is 0 -------------------"<<std::endl;
+
+        QMessageBox::information(nullptr, "Tip", "The map can't roolback!");
+
+        return;
+    }
+
+    osg::ref_ptr<osg::Geometry> other_geom = new osg::Geometry;
+    osg::ref_ptr<osg::Vec3Array> other_coords = new osg::Vec3Array();
+    otherPointsGeode->setName("OtherPoints");
+
+
+    // 采用map的遍历方法
+    QMap<int, osg::Vec3>::iterator it = map.top().begin();
+
+    for (;  it != map.top().end() ; ) {
+
+        other_coords->push_back(osg::Vec3(it.value().x(), it.value().y(), it.value().z()));
+
+        ++it;
+    }
+
+    std::cout<<"other_coords size: "<<other_coords->size()<<std::endl;
+
+    // 始终让 otherNode 只有一个孩子被渲染出来
+    if( otherNode->getNumChildren() != 0)
+    {
+        otherNode->removeChild(0,otherNode->getNumChildren());
+    }
+
+    other_geom->setVertexArray(other_coords.get());
+
+    other_geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS, 0, static_cast<GLsizei>(other_coords->size())));
+
+    otherPointsGeode->addDrawable(other_geom.get());
+
+    otherNode->addChild(otherPointsGeode);
+
+    map.pop();
 }
 
 

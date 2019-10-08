@@ -36,6 +36,7 @@ void ReadPCDataFiles::readPCDataFromFiles() {
     qDebug() << "ReadPCDataFiles->ThreadID: " << QThread::currentThreadId();
 
     QDir dir(filesDirectory);
+
     QString fileSuffix;
     dir.setNameFilters({"*.pcd", "*.txt", "*.las"});
     QFileInfoList list = dir.entryInfoList();
@@ -69,6 +70,9 @@ osg::ref_ptr<osg::Geode> ReadPCDataFiles::readPCDataFromPCDFile() {
     QString cloudPointType;
 
     QDir dir(filesDirectory);
+
+    std::cout<<"filesDirectory: "<<filesDirectory.toStdString()<<std::endl;
+
     dir.setNameFilters({"*.pcd"});
     QFileInfoList list = dir.entryInfoList();
 
@@ -93,6 +97,7 @@ osg::ref_ptr<osg::Geode> ReadPCDataFiles::readPCDataFromPCDFile() {
             mapXYZRGBPointClouds.push_back(pointCloud);
         }
         osg::ref_ptr<osg::Geode> geode = addXYZRGBMapPointCloud(osg::Vec3(0.4, 0.4, 0.4));
+
         return geode;
     } else {
         // pcl::PointCloud<pcl::PointXYZI>
@@ -148,7 +153,6 @@ osg::ref_ptr<osg::Geode> ReadPCDataFiles::addXYZIMapPointCloud(osg::Vec3 color) 
 
     geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS, 0, static_cast<GLsizei>(vertices->size())));
     geode->addDrawable(geom.get());
-
 
 
     pcl::PointCloud<pcl::PointXYZI>::Ptr groundCloud(new pcl::PointCloud<pcl::PointXYZI>);
@@ -210,7 +214,9 @@ osg::ref_ptr<osg::Geode> ReadPCDataFiles::addXYZIMapPointCloud(osg::Vec3 color) 
     test_no_geom->setVertexArray(no_coords.get());
 
     test_no_geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS, 0, static_cast<GLsizei>(no_coords->size())));
+    tempNO_GroundGeode->setName("Building");
     tempNO_GroundGeode->addDrawable(test_no_geom.get());
+
 
     buildingNode->addChild(tempNO_GroundGeode);
 

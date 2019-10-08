@@ -9,6 +9,7 @@
 #include <osgViewer/View>
 #include <osg/Switch>
 #include "ClearPointsEvents.h"
+#include "PolygonClearPointsEvents.h"
 
 class ClearIrrelevantPoints : public QObject {
     Q_OBJECT
@@ -19,6 +20,8 @@ public:
 
     void removeEvent();
 
+    void removePolygonEvent();
+
 private:
 
     osg::ref_ptr<osgViewer::View> mainView;
@@ -26,10 +29,12 @@ private:
 
     osg::ref_ptr<ClearPointsEvents> clearPointsEvents;
 
+    osg::ref_ptr<PolygonClearPointsEvents> polygonClearPointsEvents;
 public Q_SLOTS:
 
     void clearIrrelevantPointsSlot(osg::ref_ptr<osg::Switch> rootnode,osg::ref_ptr<osgViewer::View> mainview, bool isactive);
 
+    void PolygonclearIrrelevantPointsSlot(osg::ref_ptr<osg::Switch> rootnode,osg::ref_ptr<osgViewer::View> mainview, bool isactive);
 };
 
 #endif //DEMO_TWO_CLEARIRRELEVANTPOINTS_H

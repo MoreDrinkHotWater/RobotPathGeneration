@@ -15,6 +15,9 @@ const char measureNodeName[] = "measureNode";
 
 // const char roolbackNodeName[] = "roolbackNode";
 
+const char clearLineNodeName[] = "clearLineNode";
+const char saveRectNodeName[] = "saveRectNode";
+
 
 const char pointCloudNodeName[] = "pointCloudNode";
 const char groundNodeName[] = "groundNode";

@@ -71,6 +71,12 @@ bool TraceLineEditor::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionA
                         hasAlready = true;
                         break;
                     }
+                    // add by li
+                    if (childNode->getName() == "OtherPoints") {
+                        curPoint = intersection.localIntersectionPoint;
+                        hasAlready = true;
+                        break;
+                    }
                     if (childNode->getName() == "Sphere") {
                         childNode->getUserValue("pos", curPoint);
                         hasAlready = true;
@@ -107,6 +113,9 @@ bool TraceLineEditor::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionA
                         if (childNode->getName() == "CloudPoints") {
                             points.push_back(intersection.localIntersectionPoint);
                         }
+                        if (childNode->getName() == "OtherPoints") {
+                            points.push_back(intersection.localIntersectionPoint);
+                        }
                     }
                     // 一个点不好画平面
                     if (points.size() < 2) {
@@ -116,10 +125,7 @@ bool TraceLineEditor::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionA
                     std::cout << "points'size: " << points.size() << std::endl;
                     approximateZ = calculateApproximateZ(points);
                     std::cout << "approximateZ: " << approximateZ << std::endl;
-//                    for (const auto point : points) {
-//                        std::cout << "x: " << point.x() << ", y: " << point.y() << ", z: " << point.z()
-//                                  << std::endl;
-//                    }
+
                     std::cout << "------------Debug-----------------" << std::endl;
 
                     // 原始点X-Y坐标值
@@ -127,9 +133,6 @@ bool TraceLineEditor::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionA
                     for (const auto &point : points) {
                         vertices.emplace_back(std::make_pair(point.x(), point.y()));
                     }
-//                    for (const std::pair<double, double> pair : vertices) {
-//                        std::cout << "(" << pair.first << ", " << pair.second << ")" << std::endl;
-//                    }
 
                     double minX, maxX;
                     double minY, maxY;
@@ -159,7 +162,9 @@ bool TraceLineEditor::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionA
                     quVertices->push_back(osg::Vec3(maxX, maxY, approximateZ));
                     quVertices->push_back(osg::Vec3(maxX, minY, approximateZ));
 
-                    quColors->push_back(osg::Vec4(1.0f, 1.0f, 1.0f, 0.1f));
+
+                    // add red color : 1.0f, 0.0f, 0.0f, 1.0f  white color : 1.0f, 0.0f, 0.0f, 1.0f
+                    quColors->push_back(osg::Vec4(1.0f, 0.0f, 0.0f, 1.0f));
 
                     quGeom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::QUADS, 0, 4));
                     quGeom->setVertexArray(quVertices);
@@ -201,16 +206,6 @@ bool TraceLineEditor::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionA
                     return false;
                 }
             }
-//                std::cout << "------------Debug-----------------" << std::endl;
-//                auto iter = picker->getIntersections().begin();
-//                for (; iter != picker->getIntersections().end(); ++iter) {
-//                    std::cout << "----nodePath----" << std::endl;
-//                    for (const auto &node:iter->nodePath) {
-//                        std::cout << node->className() << ", " << node->libraryName() << ", " << node->getName()
-//                                  << std::endl;
-//                    }
-//                }
-//                std::cout << "------------Debug-----------------" << std::endl;
 
             osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
             vertices->push_back(std::get<1>(selectedPoints.back()));
@@ -252,10 +247,12 @@ bool TraceLineEditor::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionA
 }
 
 void TraceLineEditor::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *view) {
+
     if (selectedPoints.empty()) {
         updateIndex();
         cleanup();
     }
+
     if (ea.getButton() == osgGA::GUIEventAdapter::LEFT_MOUSE_BUTTON) {
 
         double w = 1.5, h = 1.5;
@@ -272,6 +269,28 @@ void TraceLineEditor::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *vi
             for (const auto &intersection : intersections) {
                 auto childNode = intersection.nodePath.back();
                 if (childNode->getName() == "CloudPoints") {
+                    localPoint = intersection.localIntersectionPoint;
+                    if (!selectedPoints.empty()) {
+                        if (std::get<1>(selectedPoints.back()) == localPoint) {
+                            return;
+                        }
+                    }
+                    localPointIndex = curPointIndex++;
+
+                    osg::ref_ptr<osg::Geode> nodeGeode = new osg::Geode;
+                    nodeGeode->setName("Sphere");
+                    nodeGeode->setUserValue("pos", localPoint);
+                    nodeGeode->setUserValue("ID", localPointIndex);
+
+                    osg::ref_ptr<osg::ShapeDrawable> nodeSphere = new osg::ShapeDrawable(
+                            new osg::Sphere(localPoint, 0.1f));
+                    nodeSphere->setColor(osg::Vec4(1.0, 1.0, 1.0, 1.0));
+                    nodeGeode->addDrawable(nodeSphere.get());
+                    tempNode->addChild(nodeGeode.get());
+                    hasAlready = true;
+                    break;
+                }
+                if (childNode->getName() == "OtherPoints") {
                     localPoint = intersection.localIntersectionPoint;
                     if (!selectedPoints.empty()) {
                         if (std::get<1>(selectedPoints.back()) == localPoint) {
@@ -342,6 +361,9 @@ void TraceLineEditor::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *vi
                 for (const auto &intersection : intersections) {
                     auto childNode = intersection.nodePath.back();
                     if (childNode->getName() == "CloudPoints") {
+                        points.push_back(intersection.localIntersectionPoint);
+                    }
+                    if (childNode->getName() == "OtherPoints") {
                         points.push_back(intersection.localIntersectionPoint);
                     }
                 }
@@ -649,25 +671,6 @@ void TraceLineEditor::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *vi
 
             traceNode->addChild(geode);
         }
-//        osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
-//        for (const auto &point : points) {
-//            vertices->push_back(osg::Vec3d(point.ly, point.bx, point.h));
-//        }
-//
-//        osg::ref_ptr<osg::Vec3Array> colors = new osg::Vec3Array;
-//        colors->push_back(osg::Vec3(1.0, 1.0, 1.0));
-//
-//        osg::ref_ptr<osg::Geometry> geom = new osg::Geometry;
-//        geom->setVertexArray(vertices.get());
-//        geom->setColorArray(colors.get());
-//        geom->setColorBinding(osg::Geometry::BIND_OVERALL);
-//        geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::LINE_STRIP, 0, vertices->size()));
-//
-//        osg::ref_ptr<osg::Geode> geode = new osg::Geode;
-//        geode->setName("Line");
-//        geode->addDrawable(geom);
-//
-//        traceNode->addChild(geode);
 
         // 画点
         for (const auto &point : points) {

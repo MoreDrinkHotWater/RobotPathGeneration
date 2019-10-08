@@ -62,6 +62,11 @@ bool MeasurePoints::handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionAda
                         isIntersect = true;
                         break;
                     }
+                    if (childNode->getName() == "OtherPoints") {
+                        curPoint = intersection.localIntersectionPoint;
+                        isIntersect = true;
+                        break;
+                    }
                     if (childNode->getName() == "Sphere") {
                         childNode->getUserValue("pos", curPoint);
                         isIntersect = true;
@@ -127,6 +132,28 @@ void MeasurePoints::pick(const osgGA::GUIEventAdapter &ea, osgViewer::View *view
             for (const auto &intersection : intersections) {
                 auto childNode = intersection.nodePath.back();
                 if (childNode->getName() == "CloudPoints") {
+                    localPoint = intersection.localIntersectionPoint;
+                    if (!selectedPoints.empty()) {
+                        if (std::get<1>(selectedPoints.back()) == localPoint) {
+                            return;
+                        }
+                    }
+                    localPointIndex = curPointIndex++;
+
+                    osg::ref_ptr<osg::Geode> nodeGeode = new osg::Geode;
+                    nodeGeode->setName("Sphere");
+                    nodeGeode->setUserValue("pos", localPoint);
+                    nodeGeode->setUserValue("ID", localPointIndex);
+
+                    osg::ref_ptr<osg::ShapeDrawable> nodeSphere = new osg::ShapeDrawable(
+                            new osg::Sphere(localPoint, 0.1f));
+                    nodeSphere->setColor(osg::Vec4(1.0, 1.0, 1.0, 1.0));
+                    nodeGeode->addDrawable(nodeSphere.get());
+                    measureNode->addChild(nodeGeode.get());
+
+                    break;
+                }
+                if (childNode->getName() == "OtherPoints") {
                     localPoint = intersection.localIntersectionPoint;
                     if (!selectedPoints.empty()) {
                         if (std::get<1>(selectedPoints.back()) == localPoint) {

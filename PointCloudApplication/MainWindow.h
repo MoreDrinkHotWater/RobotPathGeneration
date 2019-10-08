@@ -8,6 +8,9 @@
 #include <QMainWindow>
 #include <QFileInfo>
 #include <QThread>
+#include <QListWidget>
+
+#include "Toolbar.h"
 
 class OSGWidget;
 
@@ -126,9 +129,13 @@ class MainWindow : public QMainWindow {
 
   void cutpoint(bool isActive);
 
+  void polygonCutPoint(bool isActive);
+
   void help();
 
   void about();
+
+  void showconsole();
 
  private:
   bool writeProjectXML(const QString &filePath);
@@ -160,7 +167,13 @@ class MainWindow : public QMainWindow {
   // 剪切多余的点数据
   QAction *cutPointAction;
 
-  QFileInfo openFileInfo;
+  QAction *polygonCutPointAction;
+
+  // 显示控制台
+  QAction *showConsoleAction;
+
+
+    QFileInfo openFileInfo;
 
   QString originalPCDFileName;
 
@@ -175,6 +188,17 @@ class MainWindow : public QMainWindow {
   bool hasIntensity;
   bool hasRGB;
 
+  // add by li
+  QString NamePath;
+
+  QString DataFilesPath;
+
+  QDockWidget *dock;
+
+  QListWidget *consoleList;
+
+  QMenu *viewMenu;
+
   bool hasBeenModified;
 
   GenerateOctreeWorker *generateOctreeWorker;
@@ -182,6 +206,15 @@ class MainWindow : public QMainWindow {
 
   QThread generateOctreeThread;
 
+private:
+    // Open Recent Project
+    QList<ToolBar*> toolBars;
+
+public Q_SLOTS:
+    void UpdateConsole(const QString &projectName, const QString &datafile, const QString &jsondata, const QString &csvdata, const QString &mapdata);
+
+private:
+    QString filesDirectory;
 };
 
 #endif //POINTCLOUDAPPLICATION_MAINWINDOW_H

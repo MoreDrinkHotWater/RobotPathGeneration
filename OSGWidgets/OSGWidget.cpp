@@ -13,6 +13,9 @@
 #include <QProgressDialog>
 #include <QMetaType>
 
+#include <pcl/io/pcd_io.h>
+#include <pcl/filters/statistical_outlier_removal.h>
+
 #include <osg/Light>
 #include <osg/Point>
 #include <osgQt/GraphicsWindowQt>
@@ -22,6 +25,9 @@
 #include <osgGA/TerrainManipulator>
 #include <osg/ShapeDrawable>
 #include <osg/ValueObject>
+
+#include <osg/Switch>
+#include <osg/Geode>
 
 #include "OSGWidget.h"
 #include "NodeNames.h"
@@ -37,11 +43,17 @@
 #include "ProgressBarWorker.h"
 #include "ReadPCDataFiles.h"
 #include "ClearIrrelevantPoints.h"
+#include "ground_extraction.h"
+#include "VertexVisitor.h"
+
+
 #include "Exception.h"
+
 
 OSGWidget::OSGWidget(QWidget *parent) : QWidget(parent),
                                         mainView(nullptr),
                                         rootNode(nullptr),
+
                                         lineEditor(nullptr),
                                         lineModification(nullptr),
                                         lineDeletion(nullptr),
@@ -65,7 +77,6 @@ OSGWidget::OSGWidget(QWidget *parent) : QWidget(parent),
                                         progressBarWorker(new ProgressBarWorker()),
                                         clearIrrelevantPoints(new ClearIrrelevantPoints())
 
-//                                        ,progressDialog(nullptr)
 {
     connect(updateTimer, &QTimer::timeout, this, &OSGWidget::updateFrame);
     connect(this, &OSGWidget::showProgressBarSignal, progressBarWorker, &ProgressBarWorker::showProgressBar);
@@ -95,12 +106,10 @@ void OSGWidget::init() {
 
 void OSGWidget::reset() {
 
-    osg::ref_ptr<osg::Switch> pointCloudNode =
-            dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, pointCloudNodeName));
+    osg::ref_ptr<osg::Switch> pointCloudNode = dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, pointCloudNodeName));
     pointCloudNode->removeChildren(0, pointCloudNode->getNumChildren());
 
-    osg::ref_ptr<osg::Switch> groundNode =
-            dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, groundNodeName));
+    osg::ref_ptr<osg::Switch> groundNode = dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, groundNodeName));
     groundNode->removeChildren(0, groundNode->getNumChildren());
 
     osg::ref_ptr<osg::Switch> buildingNode =
@@ -111,14 +120,13 @@ void OSGWidget::reset() {
             dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, otherNodeName));
     otherNode->removeChildren(0, otherNode->getNumChildren());
 
-//    osg::ref_ptr<osg::Switch> roolbackNode =
-//            dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, roolbackNodeName));
-//    roolbackNode->removeChildren(0, roolbackNode->getNumChildren());
+    osg::ref_ptr<osg::Switch> clearLineNode =
+            dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, clearLineNodeName));
+    clearLineNode->removeChildren(0, clearLineNode->getNumChildren());
 
-//    osg::ref_ptr<osg::Switch> dataNode =
-//            dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, dataNodeName));
-//    dataNode->removeChildren(0, dataNode->getNumChildren());
-
+    osg::ref_ptr<osg::Switch> saveRectNode =
+            dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, saveRectNodeName));
+    saveRectNode->removeChildren(0, saveRectNode->getNumChildren());
     {
         osg::ref_ptr<osg::Switch> vectorItemNode =
                 dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, vectorItemNodeName));
@@ -144,10 +152,6 @@ void OSGWidget::reset() {
                 dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, roadLinesItemNodeName));
         roadLinesItemNode->removeChildren(0, roadLinesItemNode->getNumChildren());
     }
-
-//    osg::ref_ptr<osg::Switch> textNode =
-//            dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, textNodeName));
-//    textNode->removeChildren(0, textNode->getNumChildren());
 
     {
         osg::ref_ptr<osg::Switch> pointTextNode =
@@ -218,7 +222,11 @@ void OSGWidget::readPCDataFromFile(const QFileInfo &fileInfo,
 }
 
 void OSGWidget::readPCDataFromFiles(const QString &filesDirectory, bool hasBeenModified) {
+
+    std::cout<<"OSGWidget::filesDirectory: "<<filesDirectory.toStdString()<<std::endl;
+
     readPCDataFiles = new ReadPCDataFiles(rootNode, filesDirectory, hasBeenModified);
+
     qDebug() << "OSGWidget->ThreadID: " << QThread::currentThreadId();
 
     auto *progressDialog = new QProgressDialog("Reading files...", QString(), 0, 0, nullptr);
@@ -240,6 +248,9 @@ void OSGWidget::readPCDataFromFiles(const QString &filesDirectory, bool hasBeenM
             });
     readPCDataFilesThread.start();
     emit readPCDataFromFilesSignal();
+
+    std::cout<<"------------------OSGWidget::readPCDataFromFiles------------------"<<std::endl;
+
     progressDialog->exec();
 }
 
@@ -479,8 +490,6 @@ void OSGWidget::activeClearIrrelevantPoints(bool isActive) {
         connect(this, &OSGWidget::clearIrrelevantPointsSignal, clearIrrelevantPoints,
                 &ClearIrrelevantPoints::clearIrrelevantPointsSlot, Qt::UniqueConnection);
 
-        // , Qt::UniqueConnection
-
         clearIrrelevantPoints->moveToThread(&clearPointThread);
         connect(&clearPointThread, &QThread::finished, clearIrrelevantPoints, &QObject::deleteLater);
 
@@ -490,6 +499,32 @@ void OSGWidget::activeClearIrrelevantPoints(bool isActive) {
 
     } else {
         clearIrrelevantPoints->removeEvent();
+    }
+}
+
+void OSGWidget::activePolygonClearIrrelevantPoints(bool isActive)
+{
+    if (isActive) {
+
+        std::cout << "Osgwidget thread: " << QThread::currentThreadId() << std::endl;
+
+        std::cout << "emit success" << std::endl;
+
+        qRegisterMetaType<osg::ref_ptr<osg::Switch>>("osg::ref_ptr<osg::Switch>");
+        qRegisterMetaType<osg::ref_ptr<osgViewer::View>>("osg::ref_ptr<osgViewer::View>");
+
+        connect(this, &OSGWidget::polygonclearIrrelevantPointsSignal, clearIrrelevantPoints,
+                &ClearIrrelevantPoints::PolygonclearIrrelevantPointsSlot, Qt::UniqueConnection);
+
+        clearIrrelevantPoints->moveToThread(&clearPointThread);
+        connect(&clearPointThread, &QThread::finished, clearIrrelevantPoints, &QObject::deleteLater);
+
+        clearPointThread.start();
+
+        emit polygonclearIrrelevantPointsSignal(rootNode, mainView, isActive);
+
+    } else {
+        clearIrrelevantPoints->removePolygonEvent();
     }
 }
 
@@ -625,9 +660,10 @@ void OSGWidget::paintEvent(QPaintEvent *) {
 
     // QWidget::update();
             //可以如下使用
-            TRY
+            // TRY
+              // 渲染的时候还是这里报段错误！
                 frame();
-            END_TRY
+            // END_TRY
             //使用这两个宏包含可能发生的错误代码 ，当然可以根据需求 使用
             //RETURN_NULL
             //RETURN_PARAM(0)
@@ -726,9 +762,13 @@ void OSGWidget::initSceneGraph() {
     virtualPlaneNode->setName(virtualPlaneNodeName);
     rootNode->addChild(virtualPlaneNode.get());
 
-//    osg::ref_ptr<osg::Switch> roolbackNode = new osg::Switch;
-//    roolbackNode->setName(roolbackNodeName);
-//    rootNode->addChild(roolbackNode.get());
+    osg::ref_ptr<osg::Switch> clearLineNode = new osg::Switch;
+    clearLineNode->setName(clearLineNodeName);
+    rootNode->addChild(clearLineNode.get());
+
+    osg::ref_ptr<osg::Switch> saveRectNode = new osg::Switch;
+    saveRectNode->setName(saveRectNodeName);
+    rootNode->addChild(saveRectNode.get());
 
     {
         //离散对象节点光照
@@ -944,7 +984,9 @@ osg::ref_ptr<osg::Geode> OSGWidget::readTXTDataFromIFile(const QFileInfo &fileIn
             dataIntensity.push_back(i);
         }
         vertices->push_back(osg::Vec3d(x, y, z));
-        dataZ.push_back(z);
+
+        dataZ.emplace_back(osg::Vec3f(x, y, z));
+
     }
     file.close();
 
@@ -982,7 +1024,8 @@ osg::ref_ptr<osg::Geode> OSGWidget::readTXTDataFromRGBFile(const QFileInfo &file
         b = sections[5].toInt();
 
         vertices->push_back(osg::Vec3d(x, y, z));
-        dataZ.push_back(z);
+        dataZ.emplace_back(osg::Vec3f(x, y, z));
+
         dataColor.emplace_back(osg::Vec3(r * 1.0 / 255, g * 1.0 / 255, b * 1.0 / 255));
     }
     file.close();
@@ -1024,7 +1067,8 @@ osg::ref_ptr<osg::Geode> OSGWidget::readTXTDataFromIRGBFile(const QFileInfo &fil
         b = sections[6].toInt();
 
         vertices->push_back(osg::Vec3d(x, y, z));
-        dataZ.push_back(z);
+        dataZ.emplace_back(osg::Vec3f(x, y, z));
+
         dataIntensity.push_back(i);
         dataColor.emplace_back(osg::Vec3(r * 1.0 / 255, g * 1.0 / 255, b * 1.0 / 255));
     }
@@ -1059,7 +1103,8 @@ osg::ref_ptr<osg::Geode> OSGWidget::readTXTDataFromFile(const QFileInfo &fileInf
         z = sections[2].toDouble();
 
         vertices->push_back(osg::Vec3d(x, y, z));
-        dataZ.push_back(z);
+        dataZ.emplace_back(osg::Vec3f(x, y, z));
+
     }
     file.close();
 
@@ -1087,7 +1132,8 @@ osg::ref_ptr<osg::Geode> OSGWidget::readLASDataFromIFile(const QFileInfo &fileIn
     while (reader.ReadNextPoint()) {
         const liblas::Point &p = reader.GetPoint();
         vertices->push_back(osg::Vec3d(p.GetX(), p.GetY(), p.GetZ()));
-        dataZ.push_back(p.GetZ());
+        dataZ.emplace_back(osg::Vec3f(p.GetX(), p.GetY(), p.GetZ()));
+
         dataIntensity.push_back(p.GetIntensity());
     }
     ifs.close();
@@ -1118,7 +1164,9 @@ osg::ref_ptr<osg::Geode> OSGWidget::readLASDataFromRGBFile(const QFileInfo &file
         const liblas::Point &p = reader.GetPoint();
         liblas::Color color = p.GetColor();
         vertices->push_back(osg::Vec3d(p.GetX(), p.GetY(), p.GetZ()));
-        dataZ.push_back(p.GetZ());
+        dataZ.emplace_back(osg::Vec3f(p.GetX(), p.GetY(), p.GetZ()));
+
+
         dataColor.emplace_back(osg::Vec3(color.GetRed() * 1.0 / 65535,
                                          color.GetGreen() * 1.0 / 65535,
                                          color.GetBlue() * 1.0 / 65535));
@@ -1151,7 +1199,9 @@ osg::ref_ptr<osg::Geode> OSGWidget::readLASDataFromIRGBFile(const QFileInfo &fil
         const liblas::Point &p = reader.GetPoint();
         liblas::Color color = p.GetColor();
         vertices->push_back(osg::Vec3d(p.GetX(), p.GetY(), p.GetZ()));
-        dataZ.push_back(p.GetZ());
+        dataZ.emplace_back(osg::Vec3f(p.GetX(), p.GetY(), p.GetZ()));
+
+
         dataIntensity.push_back(p.GetIntensity());
         dataColor.emplace_back(osg::Vec3(color.GetRed() * 1.0 / 65535,
                                          color.GetGreen() * 1.0 / 65535,
@@ -1185,7 +1235,8 @@ osg::ref_ptr<osg::Geode> OSGWidget::readLASDataFromFile(const QFileInfo &fileInf
         const liblas::Point &p = reader.GetPoint();
         liblas::Color color = p.GetColor();
         vertices->push_back(osg::Vec3d(p.GetX(), p.GetY(), p.GetZ()));
-        dataZ.push_back(p.GetZ());
+        dataZ.emplace_back(osg::Vec3f(p.GetX(), p.GetY(), p.GetZ()));
+
     }
     ifs.close();
 
@@ -1213,7 +1264,8 @@ osg::ref_ptr<osg::Geode> OSGWidget::addMapPointCloud(const pcl::PointCloud<pcl::
     for (const auto &point : mapPointCloud->points) {
         vertices->push_back(osg::Vec3(point.x, point.y, point.z));
         allPoints->push_back(osg::Vec3(point.x, point.y, point.z));
-        dataZ.push_back(point.z);
+        dataZ.emplace_back(osg::Vec3f(point.x, point.y, point.z));
+
         dataIntensity.push_back(point.intensity);
         //qApp->processEvents(QEventLoop::DialogExec);
     }
@@ -1248,7 +1300,8 @@ osg::ref_ptr<osg::Geode> OSGWidget::addMapPointCloud(const pcl::PointCloud<pcl::
     for (const auto &point : mapPointCloud->points) {
         vertices->push_back(osg::Vec3(point.x, point.y, point.z));
         allPoints->push_back(osg::Vec3(point.x, point.y, point.z));
-        dataZ.push_back(point.z);
+        dataZ.emplace_back(osg::Vec3(point.x, point.y, point.z));
+
         dataColor.emplace_back(osg::Vec3(point.r * 1.0 / 255, point.g * 1.0 / 255, point.b * 1.0 / 255));
     }
     geom->setVertexArray(vertices.get());
@@ -1294,14 +1347,25 @@ void OSGWidget::colorPointCloudDataByZ(bool isActive) const {
     if (geode == nullptr) {
         return;
     }
+
     osg::ref_ptr<osg::Geometry> geom;
     osg::ref_ptr<osg::Vec3Array> colors;
     geom = dynamic_cast<osg::Geometry *>(geode->getDrawable(0));
 
     if (isActive) {
         colors = calculateColorArrayZ();
+
+        std::cout<<"------------------------colors.get()->size(): "<<colors.get()->size()<<std::endl;
+
         geom->setColorArray(colors.get());
         geom->setColorBinding(osg::Geometry::BIND_PER_VERTEX);
+
+        std::cout<<"用于渲染的 geom 几何体已经构建成功！"<<std::endl;
+        // add by li 是不是没有加到场景树上？ 按 I 显示场景树后： 显示已经加入了场景树 => 渲染错误？
+//        geode->addDrawable(geom);
+//        osg::ref_ptr<osg::Switch> pointCloudNode =
+//                dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, pointCloudNodeName));
+//        pointCloudNode->addChild(geode.get());
     } else {
         colors = new osg::Vec3Array;
         colors->push_back(osg::Vec3(0.4, 0.4, 0.4));
@@ -1366,12 +1430,14 @@ osg::ref_ptr<osg::Vec3Array> OSGWidget::calculateColorArrayZ() const {
     int range, heightRange;
     osg::ref_ptr<osg::Vec3Array> colors = new osg::Vec3Array;
 
-    for (float height : dataZ) {
-        if (height > maxHeight) {
-            maxHeight = height;
+    std::cout<<"-------------------------------dataZ size: "<<dataZ.size()<<std::endl;
+
+    for (auto height: dataZ) {
+        if (height.z() > maxHeight) {
+            maxHeight = height.z();
         }
-        if (height < minHeight) {
-            minHeight = height;
+        if (height.z() < minHeight) {
+            minHeight = height.z();
         }
     }
 
@@ -1380,8 +1446,8 @@ osg::ref_ptr<osg::Vec3Array> OSGWidget::calculateColorArrayZ() const {
         heightRange = 1;
     }
 
-    for (float height : dataZ) {
-        range = static_cast<int>((height - minHeight) / heightRange);
+    for (auto height : dataZ) {
+        range = static_cast<int>((height.z() - minHeight) / heightRange);
         if (range >= ColorZList.size()) {
             range = ColorZList.size() - 1;
         }
@@ -1405,8 +1471,8 @@ osg::ref_ptr<osg::Vec3Array> OSGWidget::calculateColorArrayIntensity() const {
     }
     intensityRange = static_cast<int>((maxIntensity - minIntensity) / ColorZList.size());
 
-    for (float intensity : dataZ) {
-        range = static_cast<int>((intensity - minIntensity) / intensityRange);
+    for (auto intensity : dataZ) {
+        range = static_cast<int>((intensity.z() - minIntensity) / intensityRange);
         if (range >= ColorZList.size()) {
             range = ColorZList.size() - 1;
         }
@@ -2049,4 +2115,204 @@ void OSGWidget::drawVectorItems(const std::vector<T> &objects) {}
 
 void OSGWidget::updateFrame() {
     QWidget::update();
+}
+
+void OSGWidget::openRecentSlot(const QString &projectName, const QString &datafile, const QString &jsondata, const QString &csvdata, const QString &mapdata)
+{
+    std::cout<<"------------------------datafile: "<<datafile.toStdString()<<std::endl;
+
+    osg::ref_ptr<osg::Switch> groundNode = dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, groundNodeName));
+    osg::ref_ptr<osg::Switch> buildingNode = dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, buildingNodeName));
+
+    osg::ref_ptr<osg::Switch> pointCloudNode = dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, pointCloudNodeName));
+
+    osg::ref_ptr<osg::Geode> geode;
+
+    QString cloudPointType;
+
+    QDir dir(datafile);
+    dir.setNameFilters({"*.pcd"});
+    QFileInfoList list = dir.entryInfoList();
+
+    // 读取PCD文件类型
+    for (const QFileInfo &fileInfo : list) {
+        pcl::PCLPointCloud2 cloud;
+        QString filePath = fileInfo.absoluteFilePath();
+        pcl::io::loadPCDFile(filePath.toStdString(), cloud);
+        for (const auto &field : cloud.fields) {
+            cloudPointType.append(QString(field.name.data()));
+        }
+        break;
+    }
+
+    if (cloudPointType.contains("rgb")) {
+        // pcl::PointCloud<pcl::PointXYZRGB>
+        mapXYZRGBPointClouds.clear();
+        for (const QFileInfo &fileInfo : list) {
+            pcl::PointCloud<pcl::PointXYZRGB>::Ptr pointCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+            pcl::PCDReader reader;
+            reader.read(fileInfo.filePath().toStdString(), *pointCloud);
+            mapXYZRGBPointClouds.push_back(pointCloud);
+        }
+        geode = addXYZRGBMapPointCloud(osg::Vec3(0.4, 0.4, 0.4));
+    } else {
+        // pcl::PointCloud<pcl::PointXYZI>
+        mapXYZIPointClouds.clear();
+        for (const QFileInfo &fileInfo : list) {
+            pcl::PointCloud<pcl::PointXYZI>::Ptr pointCloud(new pcl::PointCloud<pcl::PointXYZI>);
+            pcl::PCDReader reader;
+            reader.read(fileInfo.filePath().toStdString(), *pointCloud);
+            mapXYZIPointClouds.push_back(pointCloud);
+        }
+        geode = addXYZIMapPointCloud(osg::Vec3(0.4, 0.4, 0.4));
+    }
+
+    if (geode != nullptr) {
+
+        geode->setName("CloudPoints");
+        // pointCloudNode 存储的是 pcd 的所有点数据
+        pointCloudNode->addChild(geode.get());
+    }
+
+    std::cout<<"dataZ size: "<<dataZ.size()<<std::endl;
+
+    emit doneOpenRecentSignal();
+}
+
+osg::ref_ptr<osg::Geode> OSGWidget::addXYZRGBMapPointCloud(osg::Vec3 color) {
+    osg::ref_ptr<osg::Geode> geode = new osg::Geode;
+    osg::ref_ptr<osg::Geometry> geom = new osg::Geometry;
+
+    dataZ.clear();
+    dataIntensity.clear();
+    dataColor.clear();
+    allPoints->clear();
+
+    osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
+    for (auto &mapPointCloud : mapXYZRGBPointClouds) {
+        for (const auto &point : mapPointCloud->points) {
+            vertices->push_back(osg::Vec3(point.x, point.y, point.z));
+            allPoints->push_back(osg::Vec3(point.x, point.y, point.z));
+
+            dataZ.emplace_back(osg::Vec3(point.x, point.y, point.z));
+
+            // 颜色位数应该从头文件中读取
+            dataColor.emplace_back(osg::Vec3(point.r * 1.0 / 255, point.g * 1.0 / 255, point.b * 1.0 / 255));
+        }
+    }
+
+    geom->setVertexArray(vertices.get());
+
+    osg::ref_ptr<osg::Vec3Array> colors = new osg::Vec3Array;
+    colors->push_back(color);
+    geom->setColorArray(colors.get());
+    geom->setColorBinding(osg::Geometry::BIND_OVERALL);
+
+    geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS, 0, static_cast<GLsizei>(vertices->size())));
+    geode->addDrawable(geom.get());
+
+    return geode;
+}
+
+osg::ref_ptr<osg::Geode> OSGWidget::addXYZIMapPointCloud(osg::Vec3 color) {
+    osg::ref_ptr<osg::Geode> geode = new osg::Geode;
+    osg::ref_ptr<osg::Geometry> geom = new osg::Geometry;
+
+    dataZ.clear();
+    dataIntensity.clear();
+    dataColor.clear();
+    allPoints->clear();
+
+    // 合并多份点云文件用于地面提取
+    pcl::PointCloud<pcl::PointXYZI>::Ptr allPointCloud(new pcl::PointCloud<pcl::PointXYZI>);
+    osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
+    for (auto &mapPointCloud : mapXYZIPointClouds) {
+        for (const auto &point : mapPointCloud->points) {
+            vertices->push_back(osg::Vec3(point.x, point.y, point.z));
+            allPointCloud->push_back(point);
+            allPoints->push_back(osg::Vec3(point.x, point.y, point.z));
+
+            dataZ.emplace_back(osg::Vec3(point.x, point.y, point.z));
+
+            dataIntensity.push_back(point.intensity);
+        }
+    }
+
+    geom->setVertexArray(vertices.get());
+
+    osg::ref_ptr<osg::Vec3Array> colors = new osg::Vec3Array;
+    colors->push_back(color);
+    geom->setColorArray(colors.get());
+    geom->setColorBinding(osg::Geometry::BIND_OVERALL);
+
+    geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS, 0, static_cast<GLsizei>(vertices->size())));
+    geode->addDrawable(geom.get());
+
+    pcl::PointCloud<pcl::PointXYZI>::Ptr groundCloud(new pcl::PointCloud<pcl::PointXYZI>);
+    pcl::PointCloud<pcl::PointXYZI>::Ptr noGroundCloud(new pcl::PointCloud<pcl::PointXYZI>);
+
+    pmProcessUrban::CGroundExtraction groundExtraction;
+    groundExtraction.SetGridResolution(0.2);
+    groundExtraction.SetMinPointNumInGrid(20);
+    groundExtraction.SetMaxHeightDifference(0.1);
+
+    groundExtraction.ExtractGroundPoint(allPointCloud, groundCloud, noGroundCloud);
+
+    noGroundCloud->width = noGroundCloud->points.size();
+    noGroundCloud->height = 1;
+
+    pcl::PointCloud<pcl::PointXYZI>::Ptr noGroundCloudFiltered(new pcl::PointCloud<pcl::PointXYZI>);
+    pcl::StatisticalOutlierRemoval<pcl::PointXYZI> sor;
+    sor.setInputCloud(noGroundCloud);
+    sor.setMeanK(100);
+    sor.setStddevMulThresh(0.5);
+    sor.filter(*noGroundCloudFiltered);
+
+//    pcl::io::savePCDFile("/home/zhihui/TempPointCloud/ground.pcd", *groundCloud);
+//    pcl::io::savePCDFile("/home/zhihui/TempPointCloud/no_ground_filtered.pcd", *noGroundCloudFiltered);
+
+    // 分割后的地面点加入到 groundNode 结点
+    osg::ref_ptr<osg::Geode> tempGroundGeode;
+    tempGroundGeode = new osg::Geode;
+    osg::ref_ptr<osg::Geometry> test_geom = new osg::Geometry;
+
+    osg::ref_ptr<osg::Vec3Array> coords = new osg::Vec3Array();
+    // std::cout << "groundCloud'size: " << groundCloud->points.size() << std::endl;
+    for (const auto point : groundCloud->points) {
+        coords->push_back(osg::Vec3(point.x, point.y, point.z));
+    }
+    test_geom->setVertexArray(coords.get());
+
+    test_geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS, 0, static_cast<GLsizei>(coords->size())));
+
+    tempGroundGeode->setName("GroundPoints");
+
+    tempGroundGeode->addDrawable(test_geom.get());
+
+    osg::ref_ptr<osg::Switch> groundNode = dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, groundNodeName));
+
+    groundNode->addChild(tempGroundGeode);
+
+    // 分割后的非地面点加入到 buildingNode 结点
+    osg::ref_ptr<osg::Geode> tempNO_GroundGeode;
+    tempNO_GroundGeode = new osg::Geode;
+    osg::ref_ptr<osg::Geometry> test_no_geom = new osg::Geometry;
+
+    osg::ref_ptr<osg::Vec3Array> no_coords = new osg::Vec3Array();
+    // std::cout << "groundCloud'size: " << noGroundCloudFiltered->points.size() << std::endl;
+    for (const auto point : noGroundCloudFiltered->points) {
+        no_coords->push_back(osg::Vec3(point.x, point.y, point.z));
+    }
+    test_no_geom->setVertexArray(no_coords.get());
+
+    test_no_geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS, 0, static_cast<GLsizei>(no_coords->size())));
+    tempNO_GroundGeode->setName("Building");
+    tempNO_GroundGeode->addDrawable(test_no_geom.get());
+
+
+    osg::ref_ptr<osg::Switch> buildingNode = dynamic_cast<osg::Switch *>(NodeTreeSearch::findNodeWithName(rootNode, buildingNodeName));
+
+    buildingNode->addChild(tempNO_GroundGeode);
+
+    return geode;
 }

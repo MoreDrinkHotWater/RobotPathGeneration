@@ -13,6 +13,11 @@ find_package(Qt5 REQUIRED COMPONENTS Widgets Core Xml CONFIG)
 find_package(PCL REQUIRED)
 
 aux_source_directory(. PointCloudApplication_SRCS)
+
+list(APPEND PointCloudApplication_SRCS
+        Toolbar.h
+        Toolbar.cpp)
+
 set(RESOURCE_DIR ../ui/icon.qrc)
 
 add_executable(PointCloudApplication ${PointCloudApplication_SRCS} ${RESOURCE_DIR} ${PCL_INCLUDE_DIRS})

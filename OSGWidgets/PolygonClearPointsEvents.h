@@ -1,10 +1,6 @@
 //
-// Created by zhihui on 8/6/19.
+// Created by zhihui on 9/3/19.
 //
-
-#ifndef DEMO_TWO_CLEARPOINTSEVENTS_H
-#define DEMO_TWO_CLEARPOINTSEVENTS_H
-
 #include <osgGA/GUIEventHandler>
 #include "NodeTreeSearch.h"
 #include "NodeNames.h"
@@ -15,6 +11,7 @@
 #include <osgViewer/View>
 #include <osgDB/ReadFile>
 #include <QThread>
+#include <opencv/cv.hpp>
 
 #include <iostream>
 #include <stack>
@@ -22,11 +19,11 @@
 namespace osgViewer{
     class View;
 }
-class ClearPointsEvents : public osgGA::GUIEventHandler, public QObject{
+class PolygonClearPointsEvents : public osgGA::GUIEventHandler, public QObject{
 
 public:
-    explicit ClearPointsEvents(osg::ref_ptr<osg::Switch> &rootNode, QObject *parent = nullptr);
-    ~ClearPointsEvents() override;
+    explicit PolygonClearPointsEvents(osg::ref_ptr<osg::Switch> &rootNode, QObject *parent = nullptr);
+    ~PolygonClearPointsEvents() override;
 
     bool handle(const osgGA::GUIEventAdapter &ea, osgGA::GUIActionAdapter &aa) override;
 
@@ -34,15 +31,23 @@ public:
 
     void clean();
 
-    std::vector<osg::Vec3>::iterator iter_temp;
+    void drawDone();
+
+    int pnpoly(int nvert, std::vector<double >::iterator vertx, std::vector<double >::iterator verty, double testx, double testy);
 
     std::vector<osg::Vec3>::iterator iter_ground;
+
+    std::vector<osg::Vec3>::iterator iter_saveRect;
 
     int size_tempNode;
 
     int size_groundNode;
 
+    int size_lastRectNode;
+
     int size_buildingNode;
+
+    int size_saveRectNode;
 
 private:
     // 根结点
@@ -59,7 +64,10 @@ private:
     osg::ref_ptr<osg::Switch> otherNode;
     // 临时结点
     osg::ref_ptr<osg::Switch> tempNode;
+    // 保存用户选择的顶点和画的线段
+    osg::ref_ptr<osg::Switch> clearLineNode;
 
+    // 保存用户要删除的矩形框数据
     osg::ref_ptr<osg::Switch> saveRectNode;
 
     // 清除的叶子结点
@@ -68,29 +76,19 @@ private:
     osg::ref_ptr<osg::Geode> otherPointsGeode;
 
     // 选择的点
-    std::vector<std::pair<size_t, osg::Vec3d>> selectedPoints;
+    std::deque<osg::Vec3> selectedPoints;
 
     float x, y;
 
-    double vpW,vpH;
+    osg::Vec3 tempPoint;
 
-    double minX, maxX;
-    double minY, maxY;
+    osg::Vec3 firstVertex;
 
-    std::vector<osg::Vec3d> points;
+    std::vector<osg::Vec3> saveVertex;
 
-    // std::stack<osg::ref_ptr<osg::Switch>> savetempNodeStack;
-
-    // std::stack<QMap<int, osg::Vec3>> MapStack;
-
-    std::stack<QMap<int, osg::Vec3>> map;
+    std::stack<std::vector<osg::Vec3>> stack;
 
     osg::ref_ptr<osg::Switch> node = new osg::Switch;
-
-    osg::ref_ptr<osg::Geode> geode = new osg::Geode;
-
-    osg::ref_ptr<osg::Geometry> test_geom = new osg::Geometry;
-
 
 private:
 
@@ -98,9 +96,6 @@ private:
 
     void roolback();
 
-//    JudgeGroundPoint *judgeGroundPoint;
-//
-//    QThread judgeGroundPointThread;
 
 };
-#endif //DEMO_TWO_CLEARPOINTSEVENTS_H
+

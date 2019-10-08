@@ -22,11 +22,15 @@
 #include <QDomDocument>
 #include <QDebug>
 
+#include <QListWidget>
+#include <QDockWidget>
+
 #include "MainWindow.h"
 #include "../OSGWidgets/OSGWidget.h"
 #include "OpenFileDialog.h"
 #include "NewProjectDialog.h"
 #include "GenerateOctreeWorker.h"
+#include "Toolbar.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent),
                                           osgWidget(new OSGWidget(this)),
@@ -66,6 +70,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent),
                                           helpAction(new QAction(this)),
                                           aboutAction(new QAction(this)),
                                           cutPointAction(new QAction(this)),
+                                          polygonCutPointAction(new QAction(this)),
                                           openFileInfo(),
                                           originalPCDFileName(QString()),
                                           projectName(QString()),
@@ -82,7 +87,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent),
                                                                              QString(),
                                                                              0,
                                                                              0,
-                                                                             this)) {
+                                                                             this)),
+                                          showConsoleAction(new QAction(this)),
+                                          dock(),
+                                          consoleList(),
+                                          viewMenu(){
     setWindowTitle("HDMapsForRobot");
 
     progressDialog->reset();
@@ -112,7 +121,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent),
         file.close();
     }
 
-    // createDockWidget();
+    showconsole();
 
     setCentralWidget(osgWidget);
     osgWidget->init();
@@ -299,6 +308,12 @@ void MainWindow::initActions() {
     cutPointAction->setStatusTip("cut point");
     cutPointAction->setCheckable(true);
     connect(cutPointAction, &QAction::triggered, this, &MainWindow::cutpoint);
+
+    polygonCutPointAction->setIcon(QIcon(":/images/modifyRoadLines.png"));
+    polygonCutPointAction->setText("polygon cut point");
+    polygonCutPointAction->setStatusTip("polygon cut point");
+    polygonCutPointAction->setCheckable(true);
+    connect(polygonCutPointAction, &QAction::triggered, this, &MainWindow::polygonCutPoint);
 }
 
 void MainWindow::initMenu() {
@@ -309,6 +324,24 @@ void MainWindow::initMenu() {
     menu->addAction(newProjectAction);
     menu->addAction(openProjectAction);
     menu->addSeparator();
+
+    // new 一个 类ToolBar的对象指针
+    ToolBar *tb = new ToolBar("Open Rencent File", this);
+
+    // 把对象指针 加入到 QList<ToolBar*> 中
+    toolBars.append(tb);
+
+    connect(osgWidget, &OSGWidget::doneOpenRecentSignal, tb, &ToolBar::endprogress);
+
+    connect(tb, &ToolBar::SendSignal, this, &MainWindow::UpdateConsole);
+
+    connect(tb, &ToolBar::SendSignal, osgWidget, &OSGWidget::openRecentSlot);
+
+    // 将工具栏添加到主窗口
+    addToolBar(tb);
+
+    // toolbarMenu方法会返回一个 menu[Test, Manage Project...] 这里的 toolBars.at(0) 即 tb
+    menu->addMenu(toolBars.at(0)->toolbarMenu());
 
     menu->addAction(closeCurrentFileAction);
     menu->addSeparator();
@@ -358,6 +391,10 @@ void MainWindow::initMenu() {
 
     pMenuBar->addMenu(menu);
 
+    viewMenu = new QMenu("&View", this);
+
+    pMenuBar->addMenu(viewMenu);
+
 }
 
 void MainWindow::initToolBar() {
@@ -379,8 +416,10 @@ void MainWindow::initToolBar() {
 //    pToolBar->addActions({drawRoadLinesAction, modifyRoadLinesAction, deleteRoadLinesAction});
 //    pToolBar->addSeparator();
     pToolBar->addActions({colorByZAction, colorByIntensityAction, colorByTextureAction});
+    pToolBar->addSeparator();
 
-    pToolBar->addActions({cutPointAction});
+    pToolBar->addActions({cutPointAction, polygonCutPointAction});
+
 }
 
 void MainWindow::initStatusBar() {
@@ -478,6 +517,10 @@ void MainWindow::newProjectDirectoryInfo(const QString &projectName,
     this->jsonDataDir = jsonDataDir;
     this->csvDataDir = csvDataDir;
     this->mapDataDir = mapDataDir;
+
+
+    std::cout<<"------------------dataFilesDir---------------: "<<dataFilesDir.toStdString()<<std::endl;
+    std::cout<<"------------------this->dataFilesDir---------------: "<<this->dataFilesDir.toStdString()<<std::endl;
 }
 
 void MainWindow::closeEvent(QCloseEvent *e) {
@@ -495,10 +538,17 @@ void MainWindow::closeEvent(QCloseEvent *e) {
 }
 
 void MainWindow::newProject() {
-    QString dataFilesDir = QDir::currentPath() + "/pointCloudData/";
+
+    // 默认路径
+    // QString dataFilesDir = QDir::currentPath() + "/pointCloudData/";
     QString jsonDataDir = QDir::currentPath() + "/data/JSONData/";
     QString csvDataDir = QDir::currentPath() + "/data/CSVData/";
     QString mapDataDir = QDir::currentPath() + "/data/MapData/";
+
+//    QString fileName =
+//            QFileDialog::getExistingDirectory(this, "Open PointCloud", "../../PointCloudData");
+//
+//    dataFilesDir = fileName;
 
     // 读取软件配置INI文件获取已有项目名
     QSettings projectINIFile(QDir::currentPath() + "/.project.ini", QSettings::IniFormat);
@@ -512,24 +562,109 @@ void MainWindow::newProject() {
             newProjectDialog,
             &NewProjectDialog::setAllDefaultDirectory);
     connect(newProjectDialog, &NewProjectDialog::newProjectInfoSignal, this, &MainWindow::newProjectDirectoryInfo);
+
     emit newProjectDefaultDirectorySignal(projectsNameList, dataFilesDir, jsonDataDir, csvDataDir, mapDataDir);
     newProjectDialog->exec();
+
+
 
     if (projectName.isEmpty()) {
         return;
     }
 
     // write XML
-    QString XMLFilePath = QDir::currentPath() + "/.projects/" + projectName + ".xml";
+    QString XMLFilePath = QDir::currentPath() + "/pointCloudData/.projects/" + projectName + ".xml";
+
+    std::cout<<"--------------------XMLFilePath-----------------: "<<XMLFilePath.toStdString()<<std::endl;
+
     if (!writeProjectXML(XMLFilePath)) {
         QMessageBox::warning(nullptr, "New Project", "New Project Error!", QMessageBox::Yes);
         return;
     }
 
     // wirte INIFile
-    projectINIFile.beginGroup("Projects");
-    projectINIFile.setValue(projectName, XMLFilePath);
+//    projectINIFile.beginGroup("Projects");
+//    projectINIFile.setValue(projectName, XMLFilePath);
+//    projectINIFile.endGroup();
+
+
+    /*
+     * 取组 和 keys
+     */
+    QStringList all = projectINIFile.childGroups();
+
+    projectINIFile.beginGroup(all[1]);
+
+    // 取分组里的 数据组数
+    QStringList keys = projectINIFile.childKeys();
+
+    QStringList NameValues;
+
+    for(auto &key:keys)
+    {
+        NameValues.append("Project/"+key);
+    }
+
     projectINIFile.endGroup();
+
+    projectINIFile.beginGroup(all[0]);
+    // 取分组里的 数据组数
+    QStringList Url_keys = projectINIFile.childKeys();
+
+    QStringList UrlValues;
+
+    for(auto &key:Url_keys)
+    {
+        UrlValues.append("DataFilesPath/"+key);
+    }
+
+    projectINIFile.endGroup();
+
+    int size = NameValues.size();
+
+    QString NameStr,DataFilesPathStr,flag;
+
+    // 遍历ini文件 看是否冲突
+    for (int i = 0; i < size; ++i) {
+        NameStr = projectINIFile.value(NameValues[i]).toString();
+
+        // 写文件存储路径
+        DataFilesPathStr = projectINIFile.value(UrlValues[i]).toString();
+
+        if(NameStr == projectName && DataFilesPathStr == dataFilesDir)
+        {
+            flag = "The file has exists";
+        }
+    }
+    if (flag == "The file has exists") {
+        QMessageBox::information(nullptr, "Warring", "The file has exists");
+    }
+
+    if (flag != "The file has exists")
+    {
+        std::cout<<"dataFilesDir: "<<dataFilesDir.toStdString()<<std::endl;
+
+        // 创建.ini 文件
+        all = projectINIFile.childGroups();
+
+        //此处只拿用一组举例，有多个可以自行加设循环
+        projectINIFile.beginGroup(all[0]);
+        //存数据前要保存成QString形式的
+
+        // 取分组里的 数据组数
+        keys = projectINIFile.childKeys();
+
+        projectINIFile.setValue(QString::fromStdString("Url_"+std::to_string(keys.length())),dataFilesDir);
+
+        projectINIFile.endGroup();
+
+        projectINIFile.beginGroup(all[1]);
+        //存数据前要保存成QString形式的
+
+        projectINIFile.setValue(QString::fromStdString("Name_"+std::to_string(keys.length())),projectName);
+
+        projectINIFile.endGroup();
+    }
 
     osgWidget->readPCDataFromFiles(this->dataFilesDir, hasBeenModified);
     osgWidget->initTerrainManipulator();
@@ -1430,18 +1565,90 @@ bool MainWindow::writeProjectXML(const QString &filePath) {
 
 void MainWindow::cutpoint(bool isActive)
 {
-//    QMessageBox::information(this, tr("Information"), tr("Open"));
     if (isActive){
         if(clickedEditorAction && clickedEditorAction != cutPointAction)
         {
             clickedEditorAction->setChecked(false);
 
             osgWidget->activeLineEditor(false);
+            osgWidget->activeColorByZ(false);
             osgWidget->activeColorByIntensity(false);
             osgWidget->activeColorByTexture(false);
-            osgWidget->activeColorByZ(false);
         }
         clickedEditorAction = cutPointAction;
+    } else
+    {
+        QMessageBox::StandardButtons Msg = QMessageBox::question(nullptr, "Tip", "Do you want to quit editing? If choose 'Yes' this edit will not be returnable",
+                                                                 QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Yes);
+        switch (Msg)
+        {
+            case QMessageBox::Cancel : clickedEditorAction->setChecked(true);
+                return;
+            default:
+                break;
+        }
     }
     osgWidget->activeClearIrrelevantPoints(isActive);
+}
+
+void MainWindow::polygonCutPoint(bool isActive)
+{
+    if (isActive){
+        if(clickedEditorAction && clickedEditorAction != polygonCutPointAction)
+        {
+            clickedEditorAction->setChecked(false);
+
+            osgWidget->activeLineEditor(false);
+            osgWidget->activeColorByZ(false);
+            osgWidget->activeColorByIntensity(false);
+            osgWidget->activeColorByTexture(false);
+            osgWidget->activeClearIrrelevantPoints(false);
+        }
+        clickedEditorAction = polygonCutPointAction;
+    } else
+    {
+        QMessageBox::StandardButtons Msg = QMessageBox::question(nullptr, "Tip", "Do you want to quit editing? If choose 'Yes' this edit will not be returnable",
+                                                                 QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Yes);
+        switch (Msg)
+        {
+            case QMessageBox::Cancel : clickedEditorAction->setChecked(true);
+                return;
+            default:
+                break;
+        }
+    }
+    osgWidget->activePolygonClearIrrelevantPoints(isActive);
+}
+
+void MainWindow::showconsole() {
+//    auto *addConsoleDialog = new AddConsoleDialog();
+//    connect(this,&MainWindow::showConsoleSignal,addConsoleDialog,&AddConsoleDialog::showConsoleSlot);
+//    addConsoleDialog->show();
+
+    dock = new QDockWidget(tr("Console"), this);
+    dock->setAllowedAreas(Qt::BottomDockWidgetArea);
+    dock->setHidden(true);
+    consoleList = new QListWidget(dock);
+    consoleList->addItems(QStringList()
+                                  << NamePath + DataFilesPath
+    );
+    dock->setWidget(consoleList);
+    addDockWidget(Qt::BottomDockWidgetArea, dock);
+    viewMenu->addActions({dock->toggleViewAction()});
+}
+
+void MainWindow::UpdateConsole(const QString &projectName, const QString &datafile, const QString &jsondata, const QString &csvdata, const QString &mapdata)
+{
+    std::cout << "The Project name is:" << projectName.toStdString() << std::endl;
+
+    consoleList->clear();
+
+    consoleList->addItems(QStringList() << "Project name: " + projectName);
+    consoleList->addItems(QStringList() << "DataFile: " + datafile);
+    consoleList->addItems(QStringList() << "JSONData: " + jsondata);
+    consoleList->addItems(QStringList() << "CSVData: " + csvdata);
+    consoleList->addItems(QStringList() << "mapData: " + mapdata);
+
+    dock->setWidget(consoleList);
+    addDockWidget(Qt::BottomDockWidgetArea, dock);
 }

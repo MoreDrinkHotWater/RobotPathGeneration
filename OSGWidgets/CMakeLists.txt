@@ -18,6 +18,6 @@ find_package(OpenCV REQUIRED)
 
 aux_source_directory(. OSGWidgets_SRCS)
 
-add_library(OSGWidgets SHARED ${OSGWidgets_SRCS} JudgeGroundPoint.h JudgeGroundPoint.cpp Exception.h)
+add_library(OSGWidgets SHARED ${OSGWidgets_SRCS} JudgeGroundPoint.h JudgeGroundPoint.cpp Exception.h PolygonClearPointsEvents.h PolygonClearPointsEvents.cpp updateProgressDialog.h updateProgressDialog.cpp)
 target_include_directories(OSGWidgets PUBLIC ../Common ${OPENSCENEGRAPH_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${LIBLAS_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(OSGWidgets Qt5::Widgets Qt5::Core Common ${OPENSCENEGRAPH_LIBRARIES} ${PCL_LIBRARIES} ${libLAS_LIBRARIES} ${OpenCV_LIBS})

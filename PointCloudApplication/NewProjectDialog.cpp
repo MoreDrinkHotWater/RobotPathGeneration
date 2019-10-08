@@ -2,6 +2,9 @@
 // Created by zhihui on 7/4/19.
 //
 
+#include <iostream>
+#include <string>
+
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QFrame>
@@ -345,6 +348,10 @@ void NewProjectDialog::confirm() {
     }
 
     emit newProjectInfoSignal(projectName, dataFilesDir, jsonDataDir, csvDataDir, mapDataDir);
+
+    auto s = dataFilesDir.toStdString();
+
+    std::cout<<"newProjectInfoSignal dataFilesDir: "<<s<<std::endl;
 
     close();
 }

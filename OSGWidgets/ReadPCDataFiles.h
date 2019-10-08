@@ -54,9 +54,6 @@ class ReadPCDataFiles : public QObject {
   std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> mapXYZIPointClouds;
   std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> mapXYZRGBPointClouds;
 
-  // 保存高程数据
-  std::vector<float> dataZ;
-
   // 保存强度信息
   std::vector<float> dataIntensity;
 
@@ -67,6 +64,10 @@ class ReadPCDataFiles : public QObject {
   osg::ref_ptr<osg::Vec3Array> allPoints;
 
   bool readXmlFile(QString &DataFilesPath);
+
+ public:
+    // 保存高程数据
+    std::vector<float> dataZ;
 };
 
 #endif //HDMAPSFORROBOT_OSGWIDGETS_READPCDATAFILES_H_
